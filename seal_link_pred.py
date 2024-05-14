@@ -29,147 +29,206 @@ from torch_geometric.utils import to_networkx, to_undirected
 from ogb.linkproppred import PygLinkPropPredDataset, Evaluator
 
 import warnings
+
 warnings.filterwarnings("ignore", category=UserWarning)
 
 from scipy.sparse import SparseEfficiencyWarning
-warnings.simplefilter('ignore', SparseEfficiencyWarning)
+
+warnings.simplefilter("ignore", SparseEfficiencyWarning)
 
 from utils import *
 from models import *
- 
-class WorldTradeDataset(Dataset):
-    def __init__(self, root, year=None, transform=None, pre_transform=None, pre_filter=None):
-        self.year = year
-        self.reverse_mapping = None
-        self.data = None
-        super().__init__(root, transform, pre_transform, pre_filter)
 
-        
+
+class WorldTradeDataset(Dataset):
+    def __init__(
+        self,
+        root,
+        split_edge,
+        num_hops,
+        percent=100,
+        split="train",
+        use_coalesce=False,
+        node_label="drnl",
+        ratio_per_hop=1.0,
+        max_nodes_per_hop=None,
+        directed=False,
+        year=None,
+        transform=None,
+        pre_transform=None,
+        pre_filter=None,
+    ):
+        self.year = year
+        super().__init__(root, transform, pre_transform, pre_filter)
+        self.reverse_mapping = None
+        dl = True
+        for file in self.processed_file_names:
+            for file2 in os.listdir(self.processed_dir):
+                if file == file2:
+                    dl = False
+                    break
+
+        if dl:
+            self.data = self.download()
+        else:
+            self.data = torch.load(self.processed_paths[0])
 
     @property
     def raw_file_names(self):
-        file_names = [ 'BACI_ALL.gz', 'country_codes.csv', 'product_codes.csv',
-              'BACI_HS92_Y1995_V202401b.gz', 'BACI_HS92_Y1996_V202401b.gz', 'BACI_HS92_Y1997_V202401b.gz',
-              'BACI_HS92_Y1998_V202401b.gz', 'BACI_HS92_Y1999_V202401b.gz', 'BACI_HS92_Y2000_V202401b.gz',
-              'BACI_HS92_Y2001_V202401b.gz', 'BACI_HS92_Y2002_V202401b.gz', 'BACI_HS92_Y2003_V202401b.gz',
-              'BACI_HS92_Y2004_V202401b.gz', 'BACI_HS92_Y2005_V202401b.gz', 'BACI_HS92_Y2006_V202401b.gz',
-              'BACI_HS92_Y2007_V202401b.gz', 'BACI_HS92_Y2008_V202401b.gz', 'BACI_HS92_Y2009_V202401b.gz',
-              'BACI_HS92_Y2010_V202401b.gz', 'BACI_HS92_Y2011_V202401b.gz', 'BACI_HS92_Y2012_V202401b.gz',
-              'BACI_HS92_Y2013_V202401b.gz', 'BACI_HS92_Y2014_V202401b.gz', 'BACI_HS92_Y2015_V202401b.gz',
-              'BACI_HS92_Y2016_V202401b.gz', 'BACI_HS92_Y2017_V202401b.gz', 'BACI_HS92_Y2018_V202401b.gz',
-              'BACI_HS92_Y2019_V202401b.gz', 'BACI_HS92_Y2020_V202401b.gz', 'BACI_HS92_Y2021_V202401b.gz',
-              'BACI_HS92_Y2022_V202401b.gz'
+        file_names = [
+            "BACI_ALL.gz",
+            "country_codes.csv",
+            "product_codes.csv",
+            "BACI_HS92_Y1995_V202401b.gz",
+            "BACI_HS92_Y1996_V202401b.gz",
+            "BACI_HS92_Y1997_V202401b.gz",
+            "BACI_HS92_Y1998_V202401b.gz",
+            "BACI_HS92_Y1999_V202401b.gz",
+            "BACI_HS92_Y2000_V202401b.gz",
+            "BACI_HS92_Y2001_V202401b.gz",
+            "BACI_HS92_Y2002_V202401b.gz",
+            "BACI_HS92_Y2003_V202401b.gz",
+            "BACI_HS92_Y2004_V202401b.gz",
+            "BACI_HS92_Y2005_V202401b.gz",
+            "BACI_HS92_Y2006_V202401b.gz",
+            "BACI_HS92_Y2007_V202401b.gz",
+            "BACI_HS92_Y2008_V202401b.gz",
+            "BACI_HS92_Y2009_V202401b.gz",
+            "BACI_HS92_Y2010_V202401b.gz",
+            "BACI_HS92_Y2011_V202401b.gz",
+            "BACI_HS92_Y2012_V202401b.gz",
+            "BACI_HS92_Y2013_V202401b.gz",
+            "BACI_HS92_Y2014_V202401b.gz",
+            "BACI_HS92_Y2015_V202401b.gz",
+            "BACI_HS92_Y2016_V202401b.gz",
+            "BACI_HS92_Y2017_V202401b.gz",
+            "BACI_HS92_Y2018_V202401b.gz",
+            "BACI_HS92_Y2019_V202401b.gz",
+            "BACI_HS92_Y2020_V202401b.gz",
+            "BACI_HS92_Y2021_V202401b.gz",
+            "BACI_HS92_Y2022_V202401b.gz",
         ]
 
         return file_names
 
     @property
     def processed_file_names(self):
-        return ['world_trade_graph.pt', f'world_trade_graph_{self.year}.pt']
-    
-    def read_data(self, path, file_type='gzip', encoding='latin1'):
-        path = os.path.abspath(path)
-        file_size = os.path.getsize(path)
+        if self.year:
+            return [f"world_trade_graph_{self.year}.pt"]
+        else:
+            return ["world_trade_graph.pt"]
 
-        if file_type == 'gzip':
-            with gzip.open(path, 'rt',encoding=encoding) as f:  # 'rt' mode to read the file as text
+    def read_data(self, path, file_type="gzip", encoding="latin1"):
+        path = os.path.abspath(path)
+
+        if file_type == "gzip":
+            with gzip.open(
+                path, "rt", encoding=encoding
+            ) as f:  # 'rt' mode to read the file as text
                 line_count = sum(1 for line in f)
-            with gzip.open(path, 'rt',encoding=encoding) as file:
+            with gzip.open(path, "rt", encoding=encoding) as file:
                 # Initialize tqdm with the total number of lines directly in the read_csv
-                tqdm_iterator = tqdm(pd.read_csv(file, iterator=True, chunksize=1000), total=round(line_count/2000))
+                tqdm_iterator = tqdm(
+                    pd.read_csv(file, iterator=True, chunksize=1000),
+                    total=round(line_count / 2000),
+                )
                 df = pd.concat([chunk for chunk in tqdm_iterator])
-        elif file_type == 'csv':
-            with open(path, 'rt',encoding=encoding) as f:
+        elif file_type == "csv":
+            with open(path, "rt", encoding=encoding) as f:
                 line_count = sum(1 for line in f)
-            with open(path, 'rt',encoding=encoding) as file:
-                tqdm_iterator = tqdm(pd.read_csv(file, iterator=True, chunksize=1000), total=round(line_count/2000))
+            with open(path, "rt", encoding=encoding) as file:
+                tqdm_iterator = tqdm(
+                    pd.read_csv(file, iterator=True, chunksize=1000),
+                    total=round(line_count / 2000),
+                )
                 df = pd.concat([chunk for chunk in tqdm_iterator])
         else:
             raise ValueError('Type must be either "csv" or "gzip"')
 
         return df
 
-    def process(self):
-        dl = True
-        for file in self.processed_file_names:
-          for file2 in self.processed_paths:
-              if file in file2:
-                  dl = False
-                  break
-        
-        if dl:
-          print('Data unavailable, downloading...')
-          print('getting trade data...')
-          if self.year:
+    def get_edge_split():
+        pass
+
+    def download(self):
+        print("Data unavailable, downloading...")
+        print("getting trade data...")
+        if self.year:
             idx = 0
             for path in self.raw_paths:
                 if str(self.year) in path:
-                    break 
+                    break
                 idx += 1
             trade_data = self.read_data(self.raw_paths[idx])
 
-          else:
-            trade_data = self.read_data(self.raw_paths[0])
-
-          self.ctry_data = self.read_data(self.raw_paths[1], file_type='csv')
-          self.ctry_data = self.ctry_data.reset_index()
-          mapping = dict(zip(self.ctry_data['country_code'], self.ctry_data['index']))
-          reverse_mapping = dict(zip(self.ctry_data['country_code'], self.ctry_data['index']))
-          rev_map_func = np.vectorize(lambda x: reverse_mapping[x])
-          self.reverse_mapping = rev_map_func
-          map_func = np.vectorize(lambda x: mapping[x])
-          print('getting trade data...')
-          if self.year:
-            idx = 0
-            for path in self.raw_paths:
-                if str(self.year) in path:
-                    break 
-                idx += 1
-            trade_data = self.read_data(self.raw_paths[idx])
-
-          else:
-            trade_data = self.read_data(self.raw_paths[0])
-
-          edge_index = trade_data[['i','j']].values.T
-          edge_index = map_func(edge_index)
-          edge_attr = trade_data[['t','k','v','q']].values
-          y = np.ones(edge_attr.shape[0])
-
-          data = Data(edge_index=edge_index,
-                      edge_attr=edge_attr,
-                      y=y,
-                      )
-          
-          if self.year:
-            torch.save(data, os.path.join(self.processed_dir, f'world_trade_graph_{self.year}.pt'))
-          else:
-            torch.save(data, os.path.join(self.processed_dir, 'world_trade_graph.pt'))
         else:
-          print('Found data, skipping download...')
-          if self.year:
-            idx = 0
-            for path in self.raw_paths:
-                if str(self.year) in path:
-                    break 
-                idx += 1
-            data = torch.load(self.processed_paths[1])
+            trade_data = self.read_data(self.raw_paths[0])
 
-          else:
-            data = self.processed_paths[0]
+        self.ctry_data = self.read_data(self.raw_paths[1], file_type="csv")
+        self.ctry_data = self.ctry_data.reset_index()
+        mapping = dict(zip(self.ctry_data["country_code"], self.ctry_data["index"]))
+        reverse_mapping = dict(
+            zip(self.ctry_data["country_code"], self.ctry_data["index"])
+        )
+        rev_map_func = np.vectorize(lambda x: reverse_mapping[x])
+        self.reverse_mapping = rev_map_func
+        map_func = np.vectorize(lambda x: mapping[x])
 
-        self.data = data
+        edge_index = trade_data[["i", "j"]].values.T
+
+        edge_index = map_func(edge_index)
+
+        edge_attr = trade_data[["t", "k", "v", "q"]].values
+        y = np.ones(edge_index.shape[1])
+
+        data = Data(
+            edge_index=edge_index,
+            edge_attr=edge_attr,
+            y=y,
+            num_nodes=len(self.ctry_data),
+        )
+
+        if self.year:
+            torch.save(
+                data,
+                os.path.join(self.processed_dir, f"world_trade_graph_{self.year}.pt"),
+            )
+        else:
+            torch.save(data, os.path.join(self.processed_dir, "world_trade_graph.pt"))
+
+        return data
+
+    def process(self):
+        pos_edge, neg_edge = get_pos_neg_edges(
+            self.split,
+            self.split_edge,
+            self.data.edge_index,
+            self.data.num_nodes,
+            self.percent,
+        )
 
     def __len__(self):
         return len(self.data)
-    
+
     def __getitem__(self, index):
         return self.data
 
 
 class SEALDataset(InMemoryDataset):
-    def __init__(self, root, data, split_edge, num_hops, percent=100, split='train', 
-                 use_coalesce=False, node_label='drnl', ratio_per_hop=1.0, 
-                 max_nodes_per_hop=None, directed=False):
+    def __init__(
+        self,
+        root,
+        data,
+        split_edge,
+        num_hops,
+        percent=100,
+        split="train",
+        use_coalesce=False,
+        node_label="drnl",
+        ratio_per_hop=1.0,
+        max_nodes_per_hop=None,
+        directed=False,
+    ):
         self.data = data
         self.split_edge = split_edge
         self.num_hops = num_hops
@@ -186,53 +245,89 @@ class SEALDataset(InMemoryDataset):
     @property
     def processed_file_names(self):
         if self.percent == 100:
-            name = 'SEAL_{}_data'.format(self.split)
+            name = "SEAL_{}_data".format(self.split)
         else:
-            name = 'SEAL_{}_data_{}'.format(self.split, self.percent)
-        name += '.pt'
+            name = "SEAL_{}_data_{}".format(self.split, self.percent)
+        name += ".pt"
         return [name]
 
     def process(self):
-        pos_edge, neg_edge = get_pos_neg_edges(self.split, self.split_edge, 
-                                               self.data.edge_index, 
-                                               self.data.num_nodes, 
-                                               self.percent)
+        pos_edge, neg_edge = get_pos_neg_edges(
+            self.split,
+            self.split_edge,
+            self.data.edge_index,
+            self.data.num_nodes,
+            self.percent,
+        )
 
         if self.use_coalesce:  # compress mutli-edge into edge with weight
             self.data.edge_index, self.data.edge_weight = coalesce(
-                self.data.edge_index, self.data.edge_weight, 
-                self.data.num_nodes, self.data.num_nodes)
+                self.data.edge_index,
+                self.data.edge_weight,
+                self.data.num_nodes,
+                self.data.num_nodes,
+            )
 
-        if 'edge_weight' in self.data:
+        if "edge_weight" in self.data:
             edge_weight = self.data.edge_weight.view(-1)
         else:
             edge_weight = torch.ones(self.data.edge_index.size(1), dtype=int)
         A = ssp.csr_matrix(
-            (edge_weight, (self.data.edge_index[0], self.data.edge_index[1])), 
-            shape=(self.data.num_nodes, self.data.num_nodes)
+            (edge_weight, (self.data.edge_index[0], self.data.edge_index[1])),
+            shape=(self.data.num_nodes, self.data.num_nodes),
         )
 
         if self.directed:
             A_csc = A.tocsc()
         else:
             A_csc = None
-        
+
         # Extract enclosing subgraphs for pos and neg edges
         pos_list = extract_enclosing_subgraphs(
-            pos_edge, A, self.data.x, 1, self.num_hops, self.node_label, 
-            self.ratio_per_hop, self.max_nodes_per_hop, self.directed, A_csc)
+            pos_edge,
+            A,
+            self.data.x,
+            1,
+            self.num_hops,
+            self.node_label,
+            self.ratio_per_hop,
+            self.max_nodes_per_hop,
+            self.directed,
+            A_csc,
+        )
         neg_list = extract_enclosing_subgraphs(
-            neg_edge, A, self.data.x, 0, self.num_hops, self.node_label, 
-            self.ratio_per_hop, self.max_nodes_per_hop, self.directed, A_csc)
+            neg_edge,
+            A,
+            self.data.x,
+            0,
+            self.num_hops,
+            self.node_label,
+            self.ratio_per_hop,
+            self.max_nodes_per_hop,
+            self.directed,
+            A_csc,
+        )
 
         torch.save(self.collate(pos_list + neg_list), self.processed_paths[0])
         del pos_list, neg_list
 
 
 class SEALDynamicDataset(Dataset):
-    def __init__(self, root, data, split_edge, num_hops, percent=100, split='train', 
-                 use_coalesce=False, node_label='drnl', ratio_per_hop=1.0, 
-                 max_nodes_per_hop=None, directed=False, **kwargs):
+    def __init__(
+        self,
+        root,
+        data,
+        split_edge,
+        num_hops,
+        percent=100,
+        split="train",
+        use_coalesce=False,
+        node_label="drnl",
+        ratio_per_hop=1.0,
+        max_nodes_per_hop=None,
+        directed=False,
+        **kwargs,
+    ):
         self.data = data
         self.split_edge = split_edge
         self.num_hops = num_hops
@@ -244,31 +339,37 @@ class SEALDynamicDataset(Dataset):
         self.directed = directed
         super(SEALDynamicDataset, self).__init__(root)
 
-        pos_edge, neg_edge = get_pos_neg_edges(split, self.split_edge, 
-                                               self.data.edge_index, 
-                                               self.data.num_nodes, 
-                                               self.percent)
+        pos_edge, neg_edge = get_pos_neg_edges(
+            split,
+            self.split_edge,
+            self.data.edge_index,
+            self.data.num_nodes,
+            self.percent,
+        )
         self.links = torch.cat([pos_edge, neg_edge], 1).t().tolist()
         self.labels = [1] * pos_edge.size(1) + [0] * neg_edge.size(1)
 
         if self.use_coalesce:  # compress mutli-edge into edge with weight
             self.data.edge_index, self.data.edge_weight = coalesce(
-                self.data.edge_index, self.data.edge_weight, 
-                self.data.num_nodes, self.data.num_nodes)
+                self.data.edge_index,
+                self.data.edge_weight,
+                self.data.num_nodes,
+                self.data.num_nodes,
+            )
 
-        if 'edge_weight' in self.data:
+        if "edge_weight" in self.data:
             edge_weight = self.data.edge_weight.view(-1)
         else:
             edge_weight = torch.ones(self.data.edge_index.size(1), dtype=int)
         self.A = ssp.csr_matrix(
-            (edge_weight, (self.data.edge_index[0], self.data.edge_index[1])), 
-            shape=(self.data.num_nodes, self.data.num_nodes)
+            (edge_weight, (self.data.edge_index[0], self.data.edge_index[1])),
+            shape=(self.data.num_nodes, self.data.num_nodes),
         )
         if self.directed:
             self.A_csc = self.A.tocsc()
         else:
             self.A_csc = None
-        
+
     def __len__(self):
         return len(self.links)
 
@@ -278,9 +379,18 @@ class SEALDynamicDataset(Dataset):
     def get(self, idx):
         src, dst = self.links[idx]
         y = self.labels[idx]
-        tmp = k_hop_subgraph(src, dst, self.num_hops, self.A, self.ratio_per_hop, 
-                             self.max_nodes_per_hop, node_features=self.data.x, 
-                             y=y, directed=self.directed, A_csc=self.A_csc)
+        tmp = k_hop_subgraph(
+            src,
+            dst,
+            self.num_hops,
+            self.A,
+            self.ratio_per_hop,
+            self.max_nodes_per_hop,
+            node_features=self.data.x,
+            y=y,
+            directed=self.directed,
+            A_csc=self.A_csc,
+        )
         data = construct_pyg_graph(*tmp, self.node_label)
 
         return data
@@ -320,8 +430,8 @@ def test():
         y_pred.append(logits.view(-1).cpu())
         y_true.append(data.y.view(-1).cpu().to(torch.float))
     val_pred, val_true = torch.cat(y_pred), torch.cat(y_true)
-    pos_val_pred = val_pred[val_true==1]
-    neg_val_pred = val_pred[val_true==0]
+    pos_val_pred = val_pred[val_true == 1]
+    neg_val_pred = val_pred[val_true == 0]
 
     y_pred, y_true = [], []
     for data in tqdm(test_loader, ncols=70):
@@ -333,16 +443,20 @@ def test():
         y_pred.append(logits.view(-1).cpu())
         y_true.append(data.y.view(-1).cpu().to(torch.float))
     test_pred, test_true = torch.cat(y_pred), torch.cat(y_true)
-    pos_test_pred = test_pred[test_true==1]
-    neg_test_pred = test_pred[test_true==0]
-    
-    if args.eval_metric == 'hits':
-        results = evaluate_hits(pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred)
-    elif args.eval_metric == 'mrr':
+    pos_test_pred = test_pred[test_true == 1]
+    neg_test_pred = test_pred[test_true == 0]
+
+    if args.eval_metric == "hits":
+        results = evaluate_hits(
+            pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred
+        )
+    elif args.eval_metric == "mrr":
         results = evaluate_mrr(pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred)
-    elif args.eval_metric == 'rocauc':
-        results = evaluate_ogb_rocauc(pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred)
-    elif args.eval_metric == 'auc':
+    elif args.eval_metric == "rocauc":
+        results = evaluate_ogb_rocauc(
+            pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred
+        )
+    elif args.eval_metric == "auc":
         results = evaluate_auc(val_pred, val_true, test_pred, test_true)
 
     return results
@@ -365,8 +479,8 @@ def test_multiple_models(models):
             y_true[i].append(data.y.view(-1).cpu().to(torch.float))
     val_pred = [torch.cat(y_pred[i]) for i in range(len(models))]
     val_true = [torch.cat(y_true[i]) for i in range(len(models))]
-    pos_val_pred = [val_pred[i][val_true[i]==1] for i in range(len(models))]
-    neg_val_pred = [val_pred[i][val_true[i]==0] for i in range(len(models))]
+    pos_val_pred = [val_pred[i][val_true[i] == 1] for i in range(len(models))]
+    neg_val_pred = [val_pred[i][val_true[i] == 0] for i in range(len(models))]
 
     y_pred, y_true = [[] for _ in range(len(models))], [[] for _ in range(len(models))]
     for data in tqdm(test_loader, ncols=70):
@@ -380,24 +494,34 @@ def test_multiple_models(models):
             y_true[i].append(data.y.view(-1).cpu().to(torch.float))
     test_pred = [torch.cat(y_pred[i]) for i in range(len(models))]
     test_true = [torch.cat(y_true[i]) for i in range(len(models))]
-    pos_test_pred = [test_pred[i][test_true[i]==1] for i in range(len(models))]
-    neg_test_pred = [test_pred[i][test_true[i]==0] for i in range(len(models))]
-    
+    pos_test_pred = [test_pred[i][test_true[i] == 1] for i in range(len(models))]
+    neg_test_pred = [test_pred[i][test_true[i] == 0] for i in range(len(models))]
+
     Results = []
     for i in range(len(models)):
-        if args.eval_metric == 'hits':
-            Results.append(evaluate_hits(pos_val_pred[i], neg_val_pred[i], 
-                                         pos_test_pred[i], neg_test_pred[i]))
-        elif args.eval_metric == 'mrr':
-            Results.append(evaluate_mrr(pos_val_pred[i], neg_val_pred[i], 
-                                        pos_test_pred[i], neg_test_pred[i]))
-        elif args.eval_metric == 'rocauc':
-            Results.append(evaluate_ogb_rocauc(pos_val_pred[i], neg_val_pred[i], 
-                                        pos_test_pred[i], neg_test_pred[i]))
+        if args.eval_metric == "hits":
+            Results.append(
+                evaluate_hits(
+                    pos_val_pred[i], neg_val_pred[i], pos_test_pred[i], neg_test_pred[i]
+                )
+            )
+        elif args.eval_metric == "mrr":
+            Results.append(
+                evaluate_mrr(
+                    pos_val_pred[i], neg_val_pred[i], pos_test_pred[i], neg_test_pred[i]
+                )
+            )
+        elif args.eval_metric == "rocauc":
+            Results.append(
+                evaluate_ogb_rocauc(
+                    pos_val_pred[i], neg_val_pred[i], pos_test_pred[i], neg_test_pred[i]
+                )
+            )
 
-        elif args.eval_metric == 'auc':
-            Results.append(evaluate_auc(val_pred[i], val_true[i], 
-                                        test_pred[i], test_pred[i]))
+        elif args.eval_metric == "auc":
+            Results.append(
+                evaluate_auc(val_pred[i], val_true[i], test_pred[i], test_pred[i])
+            )
     return Results
 
 
@@ -405,34 +529,51 @@ def evaluate_hits(pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred):
     results = {}
     for K in [20, 50, 100]:
         evaluator.K = K
-        valid_hits = evaluator.eval({
-            'y_pred_pos': pos_val_pred,
-            'y_pred_neg': neg_val_pred,
-        })[f'hits@{K}']
-        test_hits = evaluator.eval({
-            'y_pred_pos': pos_test_pred,
-            'y_pred_neg': neg_test_pred,
-        })[f'hits@{K}']
+        valid_hits = evaluator.eval(
+            {
+                "y_pred_pos": pos_val_pred,
+                "y_pred_neg": neg_val_pred,
+            }
+        )[f"hits@{K}"]
+        test_hits = evaluator.eval(
+            {
+                "y_pred_pos": pos_test_pred,
+                "y_pred_neg": neg_test_pred,
+            }
+        )[f"hits@{K}"]
 
-        results[f'Hits@{K}'] = (valid_hits, test_hits)
+        results[f"Hits@{K}"] = (valid_hits, test_hits)
 
     return results
+
 
 def evaluate_mrr(pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred):
     neg_val_pred = neg_val_pred.view(pos_val_pred.shape[0], -1)
     neg_test_pred = neg_test_pred.view(pos_test_pred.shape[0], -1)
     results = {}
-    valid_mrr = evaluator.eval({
-        'y_pred_pos': pos_val_pred,
-        'y_pred_neg': neg_val_pred,
-    })['mrr_list'].mean().item()
+    valid_mrr = (
+        evaluator.eval(
+            {
+                "y_pred_pos": pos_val_pred,
+                "y_pred_neg": neg_val_pred,
+            }
+        )["mrr_list"]
+        .mean()
+        .item()
+    )
 
-    test_mrr = evaluator.eval({
-        'y_pred_pos': pos_test_pred,
-        'y_pred_neg': neg_test_pred,
-    })['mrr_list'].mean().item()
+    test_mrr = (
+        evaluator.eval(
+            {
+                "y_pred_pos": pos_test_pred,
+                "y_pred_neg": neg_test_pred,
+            }
+        )["mrr_list"]
+        .mean()
+        .item()
+    )
 
-    results['MRR'] = (valid_mrr, test_mrr)
+    results["MRR"] = (valid_mrr, test_mrr)
     return results
 
 
@@ -440,212 +581,280 @@ def evaluate_auc(val_pred, val_true, test_pred, test_true):
     valid_auc = roc_auc_score(val_true, val_pred)
     test_auc = roc_auc_score(test_true, test_pred)
     results = {}
-    results['AUC'] = (valid_auc, test_auc)
+    results["AUC"] = (valid_auc, test_auc)
 
     return results
+
 
 def evaluate_ogb_rocauc(pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred):
-    valid_rocauc = evaluator.eval({
-        'y_pred_pos': pos_val_pred,
-        'y_pred_neg': neg_val_pred,
-        })[f'rocauc']
+    valid_rocauc = evaluator.eval(
+        {
+            "y_pred_pos": pos_val_pred,
+            "y_pred_neg": neg_val_pred,
+        }
+    )[f"rocauc"]
 
-    test_rocauc = evaluator.eval({
-            'y_pred_pos': pos_test_pred,
-            'y_pred_neg': neg_test_pred,
-        })[f'rocauc']
+    test_rocauc = evaluator.eval(
+        {
+            "y_pred_pos": pos_test_pred,
+            "y_pred_neg": neg_test_pred,
+        }
+    )[f"rocauc"]
 
     results = {}
-    results['rocauc'] = (valid_rocauc, test_rocauc)
+    results["rocauc"] = (valid_rocauc, test_rocauc)
     return results
 
+
 # Data settings
-parser = argparse.ArgumentParser(description='OGBL (SEAL)')
-parser.add_argument('--dataset', type=str, default='ogbl-collab')
-parser.add_argument('--fast_split', action='store_true', 
-                    help="for large custom datasets (not OGB), do a fast data split")
+parser = argparse.ArgumentParser(description="OGBL (SEAL)")
+parser.add_argument("--dataset", type=str, default="ogbl-collab")
+parser.add_argument(
+    "--fast_split",
+    action="store_true",
+    help="for large custom datasets (not OGB), do a fast data split",
+)
 # GNN settings
-parser.add_argument('--model', type=str, default='DGCNN')
-parser.add_argument('--sortpool_k', type=float, default=0.6)
-parser.add_argument('--num_layers', type=int, default=3)
-parser.add_argument('--hidden_channels', type=int, default=32)
-parser.add_argument('--batch_size', type=int, default=32)
+parser.add_argument("--model", type=str, default="DGCNN")
+parser.add_argument("--sortpool_k", type=float, default=0.6)
+parser.add_argument("--num_layers", type=int, default=3)
+parser.add_argument("--hidden_channels", type=int, default=32)
+parser.add_argument("--batch_size", type=int, default=32)
 # Subgraph extraction settings
-parser.add_argument('--num_hops', type=int, default=1)
-parser.add_argument('--ratio_per_hop', type=float, default=1.0)
-parser.add_argument('--max_nodes_per_hop', type=int, default=None)
-parser.add_argument('--node_label', type=str, default='drnl', 
-                    help="which specific labeling trick to use")
-parser.add_argument('--use_feature', action='store_true', 
-                    help="whether to use raw node features as GNN input")
-parser.add_argument('--use_edge_weight', action='store_true', 
-                    help="whether to consider edge weight in GNN")
+parser.add_argument("--num_hops", type=int, default=1)
+parser.add_argument("--ratio_per_hop", type=float, default=1.0)
+parser.add_argument("--max_nodes_per_hop", type=int, default=None)
+parser.add_argument(
+    "--node_label",
+    type=str,
+    default="drnl",
+    help="which specific labeling trick to use",
+)
+parser.add_argument(
+    "--use_feature",
+    action="store_true",
+    help="whether to use raw node features as GNN input",
+)
+parser.add_argument(
+    "--use_edge_weight",
+    action="store_true",
+    help="whether to consider edge weight in GNN",
+)
 # Training settings
-parser.add_argument('--lr', type=float, default=0.0001)
-parser.add_argument('--epochs', type=int, default=50)
-parser.add_argument('--runs', type=int, default=1)
-parser.add_argument('--train_percent', type=float, default=100)
-parser.add_argument('--val_percent', type=float, default=100)
-parser.add_argument('--test_percent', type=float, default=100)
-parser.add_argument('--dynamic_train', action='store_true', 
-                    help="dynamically extract enclosing subgraphs on the fly")
-parser.add_argument('--dynamic_val', action='store_true')
-parser.add_argument('--dynamic_test', action='store_true')
-parser.add_argument('--num_workers', type=int, default=16, 
-                    help="number of workers for dynamic mode; 0 if not dynamic")
-parser.add_argument('--train_node_embedding', action='store_true', 
-                    help="also train free-parameter node embeddings together with GNN")
-parser.add_argument('--pretrained_node_embedding', type=str, default=None, 
-                    help="load pretrained node embeddings as additional node features")
+parser.add_argument("--lr", type=float, default=0.0001)
+parser.add_argument("--epochs", type=int, default=50)
+parser.add_argument("--runs", type=int, default=1)
+parser.add_argument("--train_percent", type=float, default=100)
+parser.add_argument("--val_percent", type=float, default=100)
+parser.add_argument("--test_percent", type=float, default=100)
+parser.add_argument(
+    "--dynamic_train",
+    action="store_true",
+    help="dynamically extract enclosing subgraphs on the fly",
+)
+parser.add_argument("--dynamic_val", action="store_true")
+parser.add_argument("--dynamic_test", action="store_true")
+parser.add_argument(
+    "--num_workers",
+    type=int,
+    default=16,
+    help="number of workers for dynamic mode; 0 if not dynamic",
+)
+parser.add_argument(
+    "--train_node_embedding",
+    action="store_true",
+    help="also train free-parameter node embeddings together with GNN",
+)
+parser.add_argument(
+    "--pretrained_node_embedding",
+    type=str,
+    default=None,
+    help="load pretrained node embeddings as additional node features",
+)
 # Testing settings
-parser.add_argument('--use_valedges_as_input', action='store_true')
-parser.add_argument('--eval_steps', type=int, default=1)
-parser.add_argument('--log_steps', type=int, default=1)
-parser.add_argument('--data_appendix', type=str, default='', 
-                    help="an appendix to the data directory")
-parser.add_argument('--save_appendix', type=str, default='', 
-                    help="an appendix to the save directory")
-parser.add_argument('--keep_old', action='store_true', 
-                    help="do not overwrite old files in the save directory")
-parser.add_argument('--continue_from', type=int, default=None, 
-                    help="from which epoch's checkpoint to continue training")
-parser.add_argument('--only_test', action='store_true', 
-                    help="only test without training")
-parser.add_argument('--test_multiple_models', action='store_true', 
-                    help="test multiple models together")
-parser.add_argument('--use_heuristic', type=str, default=None, 
-                    help="test a link prediction heuristic (CN or AA)")
+parser.add_argument("--use_valedges_as_input", action="store_true")
+parser.add_argument("--eval_steps", type=int, default=1)
+parser.add_argument("--log_steps", type=int, default=1)
+parser.add_argument(
+    "--data_appendix", type=str, default="", help="an appendix to the data directory"
+)
+parser.add_argument(
+    "--save_appendix", type=str, default="", help="an appendix to the save directory"
+)
+parser.add_argument(
+    "--keep_old",
+    action="store_true",
+    help="do not overwrite old files in the save directory",
+)
+parser.add_argument(
+    "--continue_from",
+    type=int,
+    default=None,
+    help="from which epoch's checkpoint to continue training",
+)
+parser.add_argument(
+    "--only_test", action="store_true", help="only test without training"
+)
+parser.add_argument(
+    "--test_multiple_models", action="store_true", help="test multiple models together"
+)
+parser.add_argument(
+    "--use_heuristic",
+    type=str,
+    default=None,
+    help="test a link prediction heuristic (CN or AA)",
+)
 args = parser.parse_args()
 
-if args.save_appendix == '':
-    args.save_appendix = '_' + time.strftime("%Y%m%d%H%M%S")
-if args.data_appendix == '':
-    args.data_appendix = '_h{}_{}_rph{}'.format(
-        args.num_hops, args.node_label, ''.join(str(args.ratio_per_hop).split('.')))
+if args.save_appendix == "":
+    args.save_appendix = "_" + time.strftime("%Y%m%d%H%M%S")
+if args.data_appendix == "":
+    args.data_appendix = "_h{}_{}_rph{}".format(
+        args.num_hops, args.node_label, "".join(str(args.ratio_per_hop).split("."))
+    )
     if args.max_nodes_per_hop is not None:
-        args.data_appendix += '_mnph{}'.format(args.max_nodes_per_hop)
+        args.data_appendix += "_mnph{}".format(args.max_nodes_per_hop)
     if args.use_valedges_as_input:
-        args.data_appendix += '_uvai'
+        args.data_appendix += "_uvai"
 
-args.res_dir = os.path.join('results/{}{}'.format(args.dataset, args.save_appendix))
-print('Results will be saved in ' + args.res_dir)
+args.res_dir = os.path.join("results/{}{}".format(args.dataset, args.save_appendix))
+print("Results will be saved in " + args.res_dir)
 if not os.path.exists(args.res_dir):
-    os.makedirs(args.res_dir) 
+    os.makedirs(args.res_dir)
 if not args.keep_old:
     # Backup python files.
-    copy('seal_link_pred.py', args.res_dir)
-    copy('utils.py', args.res_dir)
-log_file = os.path.join(args.res_dir, 'log.txt')
+    copy("seal_link_pred.py", args.res_dir)
+    copy("utils.py", args.res_dir)
+log_file = os.path.join(args.res_dir, "log.txt")
 # Save command line input.
-cmd_input = 'python ' + ' '.join(sys.argv) + '\n'
-with open(os.path.join(args.res_dir, 'cmd_input.txt'), 'a') as f:
+cmd_input = "python " + " ".join(sys.argv) + "\n"
+with open(os.path.join(args.res_dir, "cmd_input.txt"), "a") as f:
     f.write(cmd_input)
-print('Command line input: ' + cmd_input + ' is saved.')
-with open(log_file, 'a') as f:
-    f.write('\n' + cmd_input)
+print("Command line input: " + cmd_input + " is saved.")
+with open(log_file, "a") as f:
+    f.write("\n" + cmd_input)
 
-if args.dataset.startswith('ogbl'):
+if args.dataset.startswith("ogbl"):
     dataset = PygLinkPropPredDataset(name=args.dataset)
     split_edge = dataset.get_edge_split()
     data = dataset[0]
-    if args.dataset.startswith('ogbl-vessel'):
+    if args.dataset.startswith("ogbl-vessel"):
         # normalize node features
         data.x[:, 0] = torch.nn.functional.normalize(data.x[:, 0], dim=0)
         data.x[:, 1] = torch.nn.functional.normalize(data.x[:, 1], dim=0)
         data.x[:, 2] = torch.nn.functional.normalize(data.x[:, 2], dim=0)
-elif args.dataset == 'world_trade':
-    dataset = WorldTradeDataset('./dataset/world_trade')
+elif args.dataset == "world_trade":
+    dataset = WorldTradeDataset("./dataset/world_trade")
     data = dataset.data
-    split_edge = do_edge_split(dataset, fast_split = args.fast_split)
-
+    split_edge = do_edge_split(dataset, fast_split=args.fast_split)
+elif args.dataset.__contains__("world_trade"):
+    year = args.dataset[-4:]
+    dataset = WorldTradeDataset("./dataset/world_trade", year=year)
+    data = dataset[0]
+    print(f"DATA: {data}")
+    split_edge = do_edge_split(dataset, fast_split=args.fast_split)
 else:
-    path = osp.join('dataset', args.dataset)
+    path = osp.join("dataset", args.dataset)
     dataset = Planetoid(path, args.dataset)
     split_edge = do_edge_split(dataset, args.fast_split)
     data = dataset[0]
-    data.edge_index = split_edge['train']['edge'].t()
+    data.edge_index = split_edge["train"]["edge"].t()
 
-if args.dataset.startswith('ogbl-citation'):
-    args.eval_metric = 'mrr'
+if args.dataset.startswith("ogbl-citation"):
+    args.eval_metric = "mrr"
     directed = True
-elif args.dataset.startswith('ogbl-vessel'):
-    args.eval_metric = 'rocauc'
+elif args.dataset.startswith("ogbl-vessel"):
+    args.eval_metric = "rocauc"
     directed = False
-elif args.dataset.startswith('ogbl'):
-    args.eval_metric = 'hits'
+elif args.dataset.startswith("ogbl"):
+    args.eval_metric = "hits"
     directed = False
 else:  # assume other datasets are undirected
-    args.eval_metric = 'auc'
+    args.eval_metric = "auc"
     directed = False
 
 if args.use_valedges_as_input:
-    val_edge_index = split_edge['valid']['edge'].t()
+    val_edge_index = split_edge["valid"]["edge"].t()
     if not directed:
         val_edge_index = to_undirected(val_edge_index)
     data.edge_index = torch.cat([data.edge_index, val_edge_index], dim=-1)
-    if 'edge_weight' in data:
+    if "edge_weight" in data:
         val_edge_weight = torch.ones([val_edge_index.size(1), 1], dtype=int)
         data.edge_weight = torch.cat([data.edge_weight, val_edge_weight], 0)
 
-if args.dataset.startswith('ogbl'):
+if args.dataset.startswith("ogbl"):
     evaluator = Evaluator(name=args.dataset)
-if args.eval_metric == 'hits':
+if args.eval_metric == "hits":
     loggers = {
-        'Hits@20': Logger(args.runs, args),
-        'Hits@50': Logger(args.runs, args),
-        'Hits@100': Logger(args.runs, args),
+        "Hits@20": Logger(args.runs, args),
+        "Hits@50": Logger(args.runs, args),
+        "Hits@100": Logger(args.runs, args),
     }
-elif args.eval_metric == 'mrr':
+elif args.eval_metric == "mrr":
     loggers = {
-        'MRR': Logger(args.runs, args),
+        "MRR": Logger(args.runs, args),
     }
-elif args.eval_metric == 'rocauc':
+elif args.eval_metric == "rocauc":
     loggers = {
-        'rocauc': Logger(args.runs, args),
+        "rocauc": Logger(args.runs, args),
     }
 
-elif args.eval_metric == 'auc':
+elif args.eval_metric == "auc":
     loggers = {
-        'AUC': Logger(args.runs, args),
+        "AUC": Logger(args.runs, args),
     }
-    
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 if args.use_heuristic:
     # Test link prediction heuristics.
     num_nodes = data.num_nodes
-    if 'edge_weight' in data:
+    if "edge_weight" in data:
         edge_weight = data.edge_weight.view(-1)
     else:
         edge_weight = torch.ones(data.edge_index.size(1), dtype=int)
 
-    A = ssp.csr_matrix((edge_weight, (data.edge_index[0], data.edge_index[1])), 
-                       shape=(num_nodes, num_nodes))
+    A = ssp.csr_matrix(
+        (edge_weight, (data.edge_index[0], data.edge_index[1])),
+        shape=(num_nodes, num_nodes),
+    )
 
-    pos_val_edge, neg_val_edge = get_pos_neg_edges('valid', split_edge, 
-                                                   data.edge_index, 
-                                                   data.num_nodes)
-    pos_test_edge, neg_test_edge = get_pos_neg_edges('test', split_edge, 
-                                                     data.edge_index, 
-                                                     data.num_nodes)
+    pos_val_edge, neg_val_edge = get_pos_neg_edges(
+        "valid", split_edge, data.edge_index, data.num_nodes
+    )
+    pos_test_edge, neg_test_edge = get_pos_neg_edges(
+        "test", split_edge, data.edge_index, data.num_nodes
+    )
     pos_val_pred, pos_val_edge = eval(args.use_heuristic)(A, pos_val_edge)
     neg_val_pred, neg_val_edge = eval(args.use_heuristic)(A, neg_val_edge)
     pos_test_pred, pos_test_edge = eval(args.use_heuristic)(A, pos_test_edge)
     neg_test_pred, neg_test_edge = eval(args.use_heuristic)(A, neg_test_edge)
 
-    if args.eval_metric == 'hits':
-        results = evaluate_hits(pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred)
-    elif args.eval_metric == 'mrr':
+    if args.eval_metric == "hits":
+        results = evaluate_hits(
+            pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred
+        )
+    elif args.eval_metric == "mrr":
         results = evaluate_mrr(pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred)
-    elif args.eval_metric == 'rocauc':
-        results = evaluate_ogb_rocauc(pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred)
-    elif args.eval_metric == 'auc':
+    elif args.eval_metric == "rocauc":
+        results = evaluate_ogb_rocauc(
+            pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred
+        )
+    elif args.eval_metric == "auc":
         val_pred = torch.cat([pos_val_pred, neg_val_pred])
-        val_true = torch.cat([torch.ones(pos_val_pred.size(0), dtype=int), 
-                              torch.zeros(neg_val_pred.size(0), dtype=int)])
+        val_true = torch.cat(
+            [
+                torch.ones(pos_val_pred.size(0), dtype=int),
+                torch.zeros(neg_val_pred.size(0), dtype=int),
+            ]
+        )
         test_pred = torch.cat([pos_test_pred, neg_test_pred])
-        test_true = torch.cat([torch.ones(pos_test_pred.size(0), dtype=int), 
-                              torch.zeros(neg_test_pred.size(0), dtype=int)])
+        test_true = torch.cat(
+            [
+                torch.ones(pos_test_pred.size(0), dtype=int),
+                torch.zeros(neg_test_pred.size(0), dtype=int),
+            ]
+        )
         results = evaluate_auc(val_pred, val_true, test_pred, test_true)
 
     for key, result in results.items():
@@ -653,7 +862,7 @@ if args.use_heuristic:
     for key in loggers.keys():
         print(key)
         loggers[key].print_statistics()
-        with open(log_file, 'a') as f:
+        with open(log_file, "a") as f:
             print(key, file=f)
             loggers[key].print_statistics(f=f)
     pdb.set_trace()
@@ -661,133 +870,177 @@ if args.use_heuristic:
 
 
 # SEAL.
-path = dataset.root + '_seal{}'.format(args.data_appendix)
-use_coalesce = True if args.dataset == 'ogbl-collab' else False
+path = dataset.root + "_seal{}".format(args.data_appendix)
+use_coalesce = True if args.dataset == "ogbl-collab" else False
 if not args.dynamic_train and not args.dynamic_val and not args.dynamic_test:
     args.num_workers = 0
 
-dataset_class = 'SEALDynamicDataset' if args.dynamic_train else 'SEALDataset'
+dataset_class = "SEALDynamicDataset" if args.dynamic_train else "SEALDataset"
 train_dataset = eval(dataset_class)(
-    path, 
-    data, 
-    split_edge, 
-    num_hops=args.num_hops, 
-    percent=args.train_percent, 
-    split='train', 
-    use_coalesce=use_coalesce, 
-    node_label=args.node_label, 
-    ratio_per_hop=args.ratio_per_hop, 
-    max_nodes_per_hop=args.max_nodes_per_hop, 
-    directed=directed, 
-) 
+    path,
+    data,
+    split_edge,
+    num_hops=args.num_hops,
+    percent=args.train_percent,
+    split="train",
+    use_coalesce=use_coalesce,
+    node_label=args.node_label,
+    ratio_per_hop=args.ratio_per_hop,
+    max_nodes_per_hop=args.max_nodes_per_hop,
+    directed=directed,
+)
 if False:  # visualize some graphs
     import networkx as nx
     from torch_geometric.utils import to_networkx
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+
     loader = DataLoader(train_dataset, batch_size=1, shuffle=False)
     for g in loader:
         f = plt.figure(figsize=(20, 20))
-        limits = plt.axis('off')
+        limits = plt.axis("off")
         g = g.to(device)
         node_size = 100
         with_labels = True
-        G = to_networkx(g, node_attrs=['z'])
-        labels = {i: G.nodes[i]['z'] for i in range(len(G))}
-        nx.draw(G, node_size=node_size, arrows=True, with_labels=with_labels,
-                labels=labels)
-        f.savefig('tmp_vis.png')
+        G = to_networkx(g, node_attrs=["z"])
+        labels = {i: G.nodes[i]["z"] for i in range(len(G))}
+        nx.draw(
+            G, node_size=node_size, arrows=True, with_labels=with_labels, labels=labels
+        )
+        f.savefig("tmp_vis.png")
         pdb.set_trace()
 
-dataset_class = 'SEALDynamicDataset' if args.dynamic_val else 'SEALDataset'
+dataset_class = "SEALDynamicDataset" if args.dynamic_val else "SEALDataset"
 val_dataset = eval(dataset_class)(
-    path, 
-    data, 
-    split_edge, 
-    num_hops=args.num_hops, 
-    percent=args.val_percent, 
-    split='valid', 
-    use_coalesce=use_coalesce, 
-    node_label=args.node_label, 
-    ratio_per_hop=args.ratio_per_hop, 
-    max_nodes_per_hop=args.max_nodes_per_hop, 
-    directed=directed, 
+    path,
+    data,
+    split_edge,
+    num_hops=args.num_hops,
+    percent=args.val_percent,
+    split="valid",
+    use_coalesce=use_coalesce,
+    node_label=args.node_label,
+    ratio_per_hop=args.ratio_per_hop,
+    max_nodes_per_hop=args.max_nodes_per_hop,
+    directed=directed,
 )
-dataset_class = 'SEALDynamicDataset' if args.dynamic_test else 'SEALDataset'
+dataset_class = "SEALDynamicDataset" if args.dynamic_test else "SEALDataset"
 test_dataset = eval(dataset_class)(
-    path, 
-    data, 
-    split_edge, 
-    num_hops=args.num_hops, 
-    percent=args.test_percent, 
-    split='test', 
-    use_coalesce=use_coalesce, 
-    node_label=args.node_label, 
-    ratio_per_hop=args.ratio_per_hop, 
-    max_nodes_per_hop=args.max_nodes_per_hop, 
-    directed=directed, 
+    path,
+    data,
+    split_edge,
+    num_hops=args.num_hops,
+    percent=args.test_percent,
+    split="test",
+    use_coalesce=use_coalesce,
+    node_label=args.node_label,
+    ratio_per_hop=args.ratio_per_hop,
+    max_nodes_per_hop=args.max_nodes_per_hop,
+    directed=directed,
 )
 
 max_z = 1000  # set a large max_z so that every z has embeddings to look up
 
-train_loader = DataLoader(train_dataset, batch_size=args.batch_size, 
-                          shuffle=True, num_workers=args.num_workers)
-val_loader = DataLoader(val_dataset, batch_size=args.batch_size, 
-                        num_workers=args.num_workers)
-test_loader = DataLoader(test_dataset, batch_size=args.batch_size, 
-                         num_workers=args.num_workers)
+train_loader = DataLoader(
+    train_dataset,
+    batch_size=args.batch_size,
+    shuffle=True,
+    num_workers=args.num_workers,
+)
+val_loader = DataLoader(
+    val_dataset, batch_size=args.batch_size, num_workers=args.num_workers
+)
+test_loader = DataLoader(
+    test_dataset, batch_size=args.batch_size, num_workers=args.num_workers
+)
 
 if args.train_node_embedding:
     emb = torch.nn.Embedding(data.num_nodes, args.hidden_channels).to(device)
 elif args.pretrained_node_embedding:
     weight = torch.load(args.pretrained_node_embedding)
     emb = torch.nn.Embedding.from_pretrained(weight)
-    emb.weight.requires_grad=False
+    emb.weight.requires_grad = False
 else:
     emb = None
 
 for run in range(args.runs):
-    if args.model == 'DGCNN':
-        model = DGCNN(args.hidden_channels, args.num_layers, max_z, args.sortpool_k, 
-                      train_dataset, args.dynamic_train, use_feature=args.use_feature, 
-                      node_embedding=emb).to(device)
-    elif args.model == 'SAGE':
-        model = SAGE(args.hidden_channels, args.num_layers, max_z, train_dataset,  
-                     args.use_feature, node_embedding=emb).to(device)
-    elif args.model == 'GCN':
-        model = GCN(args.hidden_channels, args.num_layers, max_z, train_dataset, 
-                    args.use_feature, node_embedding=emb).to(device)
-    elif args.model == 'GIN':
-        model = GIN(args.hidden_channels, args.num_layers, max_z, train_dataset, 
-                    args.use_feature, node_embedding=emb).to(device)
+    if args.model == "DGCNN":
+        model = DGCNN(
+            args.hidden_channels,
+            args.num_layers,
+            max_z,
+            args.sortpool_k,
+            train_dataset,
+            args.dynamic_train,
+            use_feature=args.use_feature,
+            node_embedding=emb,
+        ).to(device)
+    elif args.model == "SAGE":
+        model = SAGE(
+            args.hidden_channels,
+            args.num_layers,
+            max_z,
+            train_dataset,
+            args.use_feature,
+            node_embedding=emb,
+        ).to(device)
+    elif args.model == "GCN":
+        model = GCN(
+            args.hidden_channels,
+            args.num_layers,
+            max_z,
+            train_dataset,
+            args.use_feature,
+            node_embedding=emb,
+        ).to(device)
+    elif args.model == "GIN":
+        model = GIN(
+            args.hidden_channels,
+            args.num_layers,
+            max_z,
+            train_dataset,
+            args.use_feature,
+            node_embedding=emb,
+        ).to(device)
     parameters = list(model.parameters())
     if args.train_node_embedding:
         torch.nn.init.xavier_uniform_(emb.weight)
         parameters += list(emb.parameters())
     optimizer = torch.optim.Adam(params=parameters, lr=args.lr)
     total_params = sum(p.numel() for param in parameters for p in param)
-    print(f'Total number of parameters is {total_params}')
-    if args.model == 'DGCNN':
-        print(f'SortPooling k is set to {model.k}')
-    with open(log_file, 'a') as f:
-        print(f'Total number of parameters is {total_params}', file=f)
-        if args.model == 'DGCNN':
-            print(f'SortPooling k is set to {model.k}', file=f)
+    print(f"Total number of parameters is {total_params}")
+    if args.model == "DGCNN":
+        print(f"SortPooling k is set to {model.k}")
+    with open(log_file, "a") as f:
+        print(f"Total number of parameters is {total_params}", file=f)
+        if args.model == "DGCNN":
+            print(f"SortPooling k is set to {model.k}", file=f)
 
     start_epoch = 1
     if args.continue_from is not None:
         model.load_state_dict(
-            torch.load(os.path.join(args.res_dir, 
-                'run{}_model_checkpoint{}.pth'.format(run+1, args.continue_from)))
+            torch.load(
+                os.path.join(
+                    args.res_dir,
+                    "run{}_model_checkpoint{}.pth".format(run + 1, args.continue_from),
+                )
+            )
         )
         optimizer.load_state_dict(
-            torch.load(os.path.join(args.res_dir, 
-                'run{}_optimizer_checkpoint{}.pth'.format(run+1, args.continue_from)))
+            torch.load(
+                os.path.join(
+                    args.res_dir,
+                    "run{}_optimizer_checkpoint{}.pth".format(
+                        run + 1, args.continue_from
+                    ),
+                )
+            )
         )
         start_epoch = args.continue_from + 1
         args.epochs -= args.continue_from
-    
+
     if args.only_test:
         results = test()
         for key, result in results.items():
@@ -795,15 +1048,16 @@ for run in range(args.runs):
         for key, result in results.items():
             valid_res, test_res = result
             print(key)
-            print(f'Run: {run + 1:02d}, '
-                  f'Valid: {100 * valid_res:.2f}%, '
-                  f'Test: {100 * test_res:.2f}%')
+            print(
+                f"Run: {run + 1:02d}, "
+                f"Valid: {100 * valid_res:.2f}%, "
+                f"Test: {100 * test_res:.2f}%"
+            )
         pdb.set_trace()
         exit()
 
     if args.test_multiple_models:
-        model_paths = [
-        ] # enter all your pretrained .pth model paths here
+        model_paths = []  # enter all your pretrained .pth model paths here
         models = []
         for path in model_paths:
             m = cp.deepcopy(model)
@@ -812,19 +1066,21 @@ for run in range(args.runs):
         Results = test_multiple_models(models)
         for i, path in enumerate(model_paths):
             print(path)
-            with open(log_file, 'a') as f:
+            with open(log_file, "a") as f:
                 print(path, file=f)
             results = Results[i]
             for key, result in results.items():
                 loggers[key].add_result(run, result)
             for key, result in results.items():
                 valid_res, test_res = result
-                to_print = (f'Run: {run + 1:02d}, ' +
-                            f'Valid: {100 * valid_res:.2f}%, ' +
-                            f'Test: {100 * test_res:.2f}%')
+                to_print = (
+                    f"Run: {run + 1:02d}, "
+                    + f"Valid: {100 * valid_res:.2f}%, "
+                    + f"Test: {100 * test_res:.2f}%"
+                )
                 print(key)
                 print(to_print)
-                with open(log_file, 'a') as f:
+                with open(log_file, "a") as f:
                     print(key, file=f)
                     print(to_print, file=f)
         pdb.set_trace()
@@ -841,37 +1097,40 @@ for run in range(args.runs):
 
             if epoch % args.log_steps == 0:
                 model_name = os.path.join(
-                    args.res_dir, 'run{}_model_checkpoint{}.pth'.format(run+1, epoch))
+                    args.res_dir, "run{}_model_checkpoint{}.pth".format(run + 1, epoch)
+                )
                 optimizer_name = os.path.join(
-                    args.res_dir, 'run{}_optimizer_checkpoint{}.pth'.format(run+1, epoch))
+                    args.res_dir,
+                    "run{}_optimizer_checkpoint{}.pth".format(run + 1, epoch),
+                )
                 torch.save(model.state_dict(), model_name)
                 torch.save(optimizer.state_dict(), optimizer_name)
 
                 for key, result in results.items():
                     valid_res, test_res = result
-                    to_print = (f'Run: {run + 1:02d}, Epoch: {epoch:02d}, ' +
-                                f'Loss: {loss:.4f}, Valid: {100 * valid_res:.2f}%, ' +
-                                f'Test: {100 * test_res:.2f}%')
+                    to_print = (
+                        f"Run: {run + 1:02d}, Epoch: {epoch:02d}, "
+                        + f"Loss: {loss:.4f}, Valid: {100 * valid_res:.2f}%, "
+                        + f"Test: {100 * test_res:.2f}%"
+                    )
                     print(key)
                     print(to_print)
-                    with open(log_file, 'a') as f:
+                    with open(log_file, "a") as f:
                         print(key, file=f)
                         print(to_print, file=f)
 
     for key in loggers.keys():
         print(key)
         loggers[key].print_statistics(run)
-        with open(log_file, 'a') as f:
+        with open(log_file, "a") as f:
             print(key, file=f)
             loggers[key].print_statistics(run, f=f)
 
 for key in loggers.keys():
     print(key)
     loggers[key].print_statistics()
-    with open(log_file, 'a') as f:
+    with open(log_file, "a") as f:
         print(key, file=f)
         loggers[key].print_statistics(f=f)
-print(f'Total number of parameters is {total_params}')
-print(f'Results are saved in {args.res_dir}')
-
-
+print(f"Total number of parameters is {total_params}")
+print(f"Results are saved in {args.res_dir}")
