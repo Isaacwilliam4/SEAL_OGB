@@ -10,6 +10,7 @@ from shutil import copy
 import copy as cp
 from tqdm import tqdm
 import pdb
+import gzip
 
 import numpy as np
 from sklearn.metrics import roc_auc_score
@@ -17,6 +18,7 @@ import scipy.sparse as ssp
 import torch
 from torch.nn import BCEWithLogitsLoss
 from torch.utils.data import DataLoader
+import pandas as pd
 
 from torch_sparse import coalesce
 import torch_geometric.transforms as T
@@ -34,6 +36,151 @@ warnings.simplefilter('ignore', SparseEfficiencyWarning)
 
 from utils import *
 from models import *
+ 
+class WorldTradeDataset(Dataset):
+    def __init__(self, root, year=None, transform=None, pre_transform=None, pre_filter=None):
+        self.year = year
+        self.reverse_mapping = None
+        self.data = None
+        super().__init__(root, transform, pre_transform, pre_filter)
+
+        
+
+    @property
+    def raw_file_names(self):
+        file_names = [ 'BACI_ALL.gz', 'country_codes.csv', 'product_codes.csv',
+              'BACI_HS92_Y1995_V202401b.gz', 'BACI_HS92_Y1996_V202401b.gz', 'BACI_HS92_Y1997_V202401b.gz',
+              'BACI_HS92_Y1998_V202401b.gz', 'BACI_HS92_Y1999_V202401b.gz', 'BACI_HS92_Y2000_V202401b.gz',
+              'BACI_HS92_Y2001_V202401b.gz', 'BACI_HS92_Y2002_V202401b.gz', 'BACI_HS92_Y2003_V202401b.gz',
+              'BACI_HS92_Y2004_V202401b.gz', 'BACI_HS92_Y2005_V202401b.gz', 'BACI_HS92_Y2006_V202401b.gz',
+              'BACI_HS92_Y2007_V202401b.gz', 'BACI_HS92_Y2008_V202401b.gz', 'BACI_HS92_Y2009_V202401b.gz',
+              'BACI_HS92_Y2010_V202401b.gz', 'BACI_HS92_Y2011_V202401b.gz', 'BACI_HS92_Y2012_V202401b.gz',
+              'BACI_HS92_Y2013_V202401b.gz', 'BACI_HS92_Y2014_V202401b.gz', 'BACI_HS92_Y2015_V202401b.gz',
+              'BACI_HS92_Y2016_V202401b.gz', 'BACI_HS92_Y2017_V202401b.gz', 'BACI_HS92_Y2018_V202401b.gz',
+              'BACI_HS92_Y2019_V202401b.gz', 'BACI_HS92_Y2020_V202401b.gz', 'BACI_HS92_Y2021_V202401b.gz',
+              'BACI_HS92_Y2022_V202401b.gz'
+        ]
+
+        return file_names
+
+    @property
+    def processed_file_names(self):
+        return ['world_trade_graph.pt', f'world_trade_graph_{self.year}.pt']
+
+    def download(self):
+        dl = True
+        for file in self.processed_file_names:
+          for file2 in os.listdir(self.processed_paths):
+              if file in file2:
+                  dl = False
+                  break
+        
+        if dl:
+          print('Data unavailable, downloading...')
+          super().download()
+    
+    def read_data(self, path, file_type='gzip', encoding='latin1'):
+        path = os.path.abspath(path)
+        file_size = os.path.getsize(path)
+
+        if file_type == 'gzip':
+            with gzip.open(path, 'rt',encoding=encoding) as f:  # 'rt' mode to read the file as text
+                line_count = sum(1 for line in f)
+            with gzip.open(path, 'rt',encoding=encoding) as file:
+                # Initialize tqdm with the total number of lines directly in the read_csv
+                tqdm_iterator = tqdm(pd.read_csv(file, iterator=True, chunksize=1000), total=round(line_count/2000))
+                df = pd.concat([chunk for chunk in tqdm_iterator])
+        elif file_type == 'csv':
+            with open(path, 'rt',encoding=encoding) as f:
+                line_count = sum(1 for line in f)
+            with open(path, 'rt',encoding=encoding) as file:
+                tqdm_iterator = tqdm(pd.read_csv(file, iterator=True, chunksize=1000), total=round(line_count/2000))
+                df = pd.concat([chunk for chunk in tqdm_iterator])
+        else:
+            raise ValueError('Type must be either "csv" or "gzip"')
+
+        return df
+
+    def process(self):
+        dl = True
+        for file in self.processed_file_names:
+          for file2 in self.processed_paths:
+              if file in file2:
+                  dl = False
+                  break
+        
+        if dl:
+          print('Data unavailable, downloading...')
+          print('getting trade data...')
+          if self.year:
+            idx = 0
+            for path in self.raw_paths:
+                if str(self.year) in path:
+                    break 
+                idx += 1
+            trade_data = self.read_data(self.raw_paths[idx])
+
+          else:
+            trade_data = self.read_data(self.raw_paths[0])
+        
+
+        else:
+          print('Found data, skipping download...')
+          if self.year:
+            idx = 0
+            for path in self.raw_paths:
+                if str(self.year) in path:
+                    break 
+                idx += 1
+            trade_data = self.read_data(self.raw_paths[idx])
+
+          else:
+            trade_data = self.read_data(self.raw_paths[0])
+
+        self.ctry_data = self.read_data(self.raw_paths[1], file_type='csv')
+        self.ctry_data = self.ctry_data.reset_index()
+        mapping = dict(zip(self.ctry_data['country_code'], self.ctry_data['index']))
+        reverse_mapping = dict(zip(self.ctry_data['country_code'], self.ctry_data['index']))
+        rev_map_func = np.vectorize(lambda x: reverse_mapping[x])
+        self.reverse_mapping = rev_map_func
+        map_func = np.vectorize(lambda x: mapping[x])
+        print('getting trade data...')
+        if self.year:
+          idx = 0
+          for path in self.raw_paths:
+              if str(self.year) in path:
+                  break 
+              idx += 1
+          trade_data = self.read_data(self.raw_paths[idx])
+
+        else:
+          trade_data = self.read_data(self.raw_paths[0])
+
+
+
+        edge_index = trade_data[['i','j']].values.T
+        edge_index = map_func(edge_index)
+        edge_attr = trade_data[['t','k','v','q']].values
+        y = np.ones(edge_attr.shape[0])
+
+        data = Data(edge_index=edge_index,
+                    edge_attr=edge_attr,
+                    y=y,
+                    )
+        
+        if dl:
+          if self.year:
+            torch.save(data, os.path.join(self.processed_dir, f'world_trade_graph_{self.year}.pt'))
+          else:
+            torch.save(data, os.path.join(self.processed_dir, 'world_trade_graph.pt'))
+
+        self.data = data
+
+    def __len__(self):
+        return len(self.data)
+    
+    def __getitem__(self, index):
+        return self.data
 
 
 class SEALDataset(InMemoryDataset):
@@ -423,6 +570,11 @@ if args.dataset.startswith('ogbl'):
         data.x[:, 0] = torch.nn.functional.normalize(data.x[:, 0], dim=0)
         data.x[:, 1] = torch.nn.functional.normalize(data.x[:, 1], dim=0)
         data.x[:, 2] = torch.nn.functional.normalize(data.x[:, 2], dim=0)
+elif args.dataset == 'world_trade':
+    dataset = WorldTradeDataset('./dataset/world_trade')
+    data = dataset.data
+    split_edge = do_edge_split(dataset, fast_split = args.fast_split)
+
 else:
     path = osp.join('dataset', args.dataset)
     dataset = Planetoid(path, args.dataset)

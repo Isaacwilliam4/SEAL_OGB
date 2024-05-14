@@ -189,6 +189,7 @@ def extract_enclosing_subgraphs(link_index, A, x, y, num_hops, node_label='drnl'
 
 def do_edge_split(dataset, fast_split=False, val_ratio=0.05, test_ratio=0.1):
     data = dataset[0]
+
     random.seed(234)
     torch.manual_seed(234)
 
