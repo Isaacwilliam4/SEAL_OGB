@@ -1,0 +1,12 @@
+Results will be saved in results/world_trade_1995_20240514143113
+Command line input: python seal_link_pred.py --dataset world_trade_1995 --fast_split --num_hops 1 --use_feature --eval_steps 1 --epochs 10 --dynamic_train --dynamic_val --dynamic_test --train_percent 2 --val_percent 1 --test_percent 1
+ is saved.
+Data unavailable, downloading...
+PROCESSED DIR: /grphome/grp_supplychainai/compute/world_trade/processed
+FILE1:world_trade_graph_1995.pt, FILE2:world_trade_graph_1995.pt
+Traceback (most recent call last):
+  File "seal_link_pred.py", line 757, in <module>
+    split_edge = do_edge_split(dataset, fast_split=args.fast_split)
+  File "/grphome/grp_supplychainai/SEAL_OGB/utils.py", line 251, in do_edge_split
+    n_v = int(math.floor(val_ratio * row.size(0)))
+TypeError: 'int' object is not callable

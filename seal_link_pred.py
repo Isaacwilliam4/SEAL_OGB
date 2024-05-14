@@ -25,6 +25,7 @@ import torch_geometric.transforms as T
 from torch_geometric.datasets import Planetoid
 from torch_geometric.data import Data, Dataset, InMemoryDataset, DataLoader
 from torch_geometric.utils import to_networkx, to_undirected
+from torch_geometric.transforms import RandomLinkSplit
 
 from ogb.linkproppred import PygLinkPropPredDataset, Evaluator
 
@@ -44,34 +45,23 @@ class WorldTradeDataset(Dataset):
     def __init__(
         self,
         root,
-        split_edge,
-        num_hops,
-        percent=100,
-        split="train",
-        use_coalesce=False,
-        node_label="drnl",
-        ratio_per_hop=1.0,
-        max_nodes_per_hop=None,
-        directed=False,
+        # split_edge,
+        # num_hops,
+        # percent=100,
+        # split="train",
+        # use_coalesce=False,
+        # node_label="drnl",
+        # ratio_per_hop=1.0,
+        # max_nodes_per_hop=None,
+        # directed=False,
         year=None,
         transform=None,
         pre_transform=None,
         pre_filter=None,
     ):
         self.year = year
-        super().__init__(root, transform, pre_transform, pre_filter)
         self.reverse_mapping = None
-        dl = True
-        for file in self.processed_file_names:
-            for file2 in os.listdir(self.processed_dir):
-                if file == file2:
-                    dl = False
-                    break
-
-        if dl:
-            self.data = self.download()
-        else:
-            self.data = torch.load(self.processed_paths[0])
+        super().__init__(root, transform, pre_transform, pre_filter)
 
     @property
     def raw_file_names(self):
@@ -151,61 +141,69 @@ class WorldTradeDataset(Dataset):
         pass
 
     def download(self):
-        print("Data unavailable, downloading...")
-        print("getting trade data...")
-        if self.year:
-            idx = 0
-            for path in self.raw_paths:
-                if str(self.year) in path:
+        dl = True
+        for file in self.processed_file_names:
+            for file2 in os.listdir(self.processed_dir):
+                if file == file2:
+                    dl = False
                     break
-                idx += 1
-            trade_data = self.read_data(self.raw_paths[idx])
 
-        else:
-            trade_data = self.read_data(self.raw_paths[0])
+        if dl:
+            print("data unavailable, downloading...")
 
-        self.ctry_data = self.read_data(self.raw_paths[1], file_type="csv")
-        self.ctry_data = self.ctry_data.reset_index()
-        mapping = dict(zip(self.ctry_data["country_code"], self.ctry_data["index"]))
-        reverse_mapping = dict(
-            zip(self.ctry_data["country_code"], self.ctry_data["index"])
-        )
-        rev_map_func = np.vectorize(lambda x: reverse_mapping[x])
-        self.reverse_mapping = rev_map_func
-        map_func = np.vectorize(lambda x: mapping[x])
+            if self.year:
+                idx = 0
+                for path in self.raw_paths:
+                    if str(self.year) in path:
+                        break
+                    idx += 1
+                trade_data = self.read_data(self.raw_paths[idx])
 
-        edge_index = trade_data[["i", "j"]].values.T
+            else:
+                trade_data = self.read_data(self.raw_paths[0])
 
-        edge_index = map_func(edge_index)
-
-        edge_attr = trade_data[["t", "k", "v", "q"]].values
-        y = np.ones(edge_index.shape[1])
-
-        data = Data(
-            edge_index=edge_index,
-            edge_attr=edge_attr,
-            y=y,
-            num_nodes=len(self.ctry_data),
-        )
-
-        if self.year:
-            torch.save(
-                data,
-                os.path.join(self.processed_dir, f"world_trade_graph_{self.year}.pt"),
+            self.ctry_data = self.read_data(self.raw_paths[1], file_type="csv")
+            self.ctry_data = self.ctry_data.reset_index()
+            mapping = dict(zip(self.ctry_data["country_code"], self.ctry_data["index"]))
+            reverse_mapping = dict(
+                zip(self.ctry_data["country_code"], self.ctry_data["index"])
             )
-        else:
-            torch.save(data, os.path.join(self.processed_dir, "world_trade_graph.pt"))
+            rev_map_func = np.vectorize(lambda x: reverse_mapping[x])
+            self.reverse_mapping = rev_map_func
+            map_func = np.vectorize(lambda x: mapping[x])
 
-        return data
+            edge_index = trade_data[["i", "j"]].values.T
+
+            edge_index = map_func(edge_index)
+
+            edge_attr = trade_data[["t", "k", "v", "q"]].values
+            y = np.ones(edge_index.shape[1])
+
+            data = Data(
+                edge_index=edge_index,
+                edge_attr=edge_attr,
+                num_nodes=len(self.ctry_data),
+            )
+
+            if self.year:
+                torch.save(
+                    data,
+                    os.path.join(
+                        self.processed_dir, f"world_trade_graph_{self.year}.pt"
+                    ),
+                )
+            else:
+                torch.save(
+                    data, os.path.join(self.processed_dir, "world_trade_graph.pt")
+                )
+            self.data = data
+        else:
+            print("Data found, skipping download...")
+            self.data = torch.load(self.processed_paths[0])
 
     def process(self):
-        pos_edge, neg_edge = get_pos_neg_edges(
-            self.split,
-            self.split_edge,
-            self.data.edge_index,
-            self.data.num_nodes,
-            self.percent,
-        )
+        transform = RandomLinkSplit(is_undirected=False)
+        train_data, val_data, test_data = transform(self.data)
 
     def __len__(self):
         return len(self.data)
@@ -744,14 +742,13 @@ if args.dataset.startswith("ogbl"):
         data.x[:, 1] = torch.nn.functional.normalize(data.x[:, 1], dim=0)
         data.x[:, 2] = torch.nn.functional.normalize(data.x[:, 2], dim=0)
 elif args.dataset == "world_trade":
-    dataset = WorldTradeDataset("./dataset/world_trade")
+    dataset = WorldTradeDataset(os.path.abspath("../compute/world_trade"))
     data = dataset.data
     split_edge = do_edge_split(dataset, fast_split=args.fast_split)
 elif args.dataset.__contains__("world_trade"):
     year = args.dataset[-4:]
-    dataset = WorldTradeDataset("./dataset/world_trade", year=year)
+    dataset = WorldTradeDataset(os.path.abspath("../compute/world_trade"), year=year)
     data = dataset[0]
-    print(f"DATA: {data}")
     split_edge = do_edge_split(dataset, fast_split=args.fast_split)
 else:
     path = osp.join("dataset", args.dataset)
