@@ -46,14 +46,14 @@ class WorldTradeDataset(Dataset):
         self,
         root,
         # split_edge,
-        # num_hops,
+        num_hops=1,
         # percent=100,
         # split="train",
         # use_coalesce=False,
         # node_label="drnl",
         # ratio_per_hop=1.0,
         # max_nodes_per_hop=None,
-        # directed=False,
+        directed=True,
         year=None,
         transform=None,
         pre_transform=None,
@@ -61,6 +61,7 @@ class WorldTradeDataset(Dataset):
     ):
         self.year = year
         self.reverse_mapping = None
+        self.split_edge = None
         super().__init__(root, transform, pre_transform, pre_filter)
 
     @property
@@ -202,8 +203,58 @@ class WorldTradeDataset(Dataset):
             self.data = torch.load(self.processed_paths[0])
 
     def process(self):
-        transform = RandomLinkSplit(is_undirected=False)
-        train_data, val_data, test_data = transform(self.data)
+        transform = RandomLinkSplit(is_undirected=False, split_labels=True)
+        self.split_edge = transform(self.data)
+        pos_edge, neg_edge = get_pos_neg_edges(
+            self.split,
+            self.split_edge,
+            self.data.edge_index,
+            self.data.num_nodes,
+            self.percent,
+        )
+
+        if "edge_weight" in self.data:
+            edge_weight = self.data.edge_weight.view(-1)
+        else:
+            edge_weight = torch.ones(self.data.edge_index.size(1), dtype=int)
+        A = ssp.csr_matrix(
+            (edge_weight, (self.data.edge_index[0], self.data.edge_index[1])),
+            shape=(self.data.num_nodes, self.data.num_nodes),
+        )
+
+        if self.directed:
+            A_csc = A.tocsc()
+        else:
+            A_csc = None
+
+        # Extract enclosing subgraphs for pos and neg edges
+        pos_list = extract_enclosing_subgraphs(
+            pos_edge,
+            A,
+            self.data.x,
+            1,
+            self.num_hops,
+            self.node_label,
+            self.ratio_per_hop,
+            self.max_nodes_per_hop,
+            self.directed,
+            A_csc,
+        )
+        neg_list = extract_enclosing_subgraphs(
+            neg_edge,
+            A,
+            self.data.x,
+            0,
+            self.num_hops,
+            self.node_label,
+            self.ratio_per_hop,
+            self.max_nodes_per_hop,
+            self.directed,
+            A_csc,
+        )
+
+        torch.save(self.collate(pos_list + neg_list), self.processed_paths[0])
+        del pos_list, neg_list
 
     def __len__(self):
         return len(self.data)
@@ -743,13 +794,15 @@ if args.dataset.startswith("ogbl"):
         data.x[:, 2] = torch.nn.functional.normalize(data.x[:, 2], dim=0)
 elif args.dataset == "world_trade":
     dataset = WorldTradeDataset(os.path.abspath("../compute/world_trade"))
-    data = dataset.data
-    split_edge = do_edge_split(dataset, fast_split=args.fast_split)
+    data = dataset[0]
+    transform = RandomLinkSplit(is_undirected=False, split_labels=True)
+    split_edge = transform(data)
 elif args.dataset.__contains__("world_trade"):
     year = args.dataset[-4:]
     dataset = WorldTradeDataset(os.path.abspath("../compute/world_trade"), year=year)
     data = dataset[0]
-    split_edge = do_edge_split(dataset, fast_split=args.fast_split)
+    transform = RandomLinkSplit(is_undirected=False, split_labels=True)
+    split_edge = transform(data)
 else:
     path = osp.join("dataset", args.dataset)
     dataset = Planetoid(path, args.dataset)
