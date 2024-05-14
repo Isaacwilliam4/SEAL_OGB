@@ -66,18 +66,6 @@ class WorldTradeDataset(Dataset):
     @property
     def processed_file_names(self):
         return ['world_trade_graph.pt', f'world_trade_graph_{self.year}.pt']
-
-    def download(self):
-        dl = True
-        for file in self.processed_file_names:
-          for file2 in os.listdir(self.processed_paths):
-              if file in file2:
-                  dl = False
-                  break
-        
-        if dl:
-          print('Data unavailable, downloading...')
-          super().download()
     
     def read_data(self, path, file_type='gzip', encoding='latin1'):
         path = os.path.abspath(path)
@@ -122,10 +110,15 @@ class WorldTradeDataset(Dataset):
 
           else:
             trade_data = self.read_data(self.raw_paths[0])
-        
 
-        else:
-          print('Found data, skipping download...')
+          self.ctry_data = self.read_data(self.raw_paths[1], file_type='csv')
+          self.ctry_data = self.ctry_data.reset_index()
+          mapping = dict(zip(self.ctry_data['country_code'], self.ctry_data['index']))
+          reverse_mapping = dict(zip(self.ctry_data['country_code'], self.ctry_data['index']))
+          rev_map_func = np.vectorize(lambda x: reverse_mapping[x])
+          self.reverse_mapping = rev_map_func
+          map_func = np.vectorize(lambda x: mapping[x])
+          print('getting trade data...')
           if self.year:
             idx = 0
             for path in self.raw_paths:
@@ -137,42 +130,32 @@ class WorldTradeDataset(Dataset):
           else:
             trade_data = self.read_data(self.raw_paths[0])
 
-        self.ctry_data = self.read_data(self.raw_paths[1], file_type='csv')
-        self.ctry_data = self.ctry_data.reset_index()
-        mapping = dict(zip(self.ctry_data['country_code'], self.ctry_data['index']))
-        reverse_mapping = dict(zip(self.ctry_data['country_code'], self.ctry_data['index']))
-        rev_map_func = np.vectorize(lambda x: reverse_mapping[x])
-        self.reverse_mapping = rev_map_func
-        map_func = np.vectorize(lambda x: mapping[x])
-        print('getting trade data...')
-        if self.year:
-          idx = 0
-          for path in self.raw_paths:
-              if str(self.year) in path:
-                  break 
-              idx += 1
-          trade_data = self.read_data(self.raw_paths[idx])
+          edge_index = trade_data[['i','j']].values.T
+          edge_index = map_func(edge_index)
+          edge_attr = trade_data[['t','k','v','q']].values
+          y = np.ones(edge_attr.shape[0])
 
-        else:
-          trade_data = self.read_data(self.raw_paths[0])
-
-
-
-        edge_index = trade_data[['i','j']].values.T
-        edge_index = map_func(edge_index)
-        edge_attr = trade_data[['t','k','v','q']].values
-        y = np.ones(edge_attr.shape[0])
-
-        data = Data(edge_index=edge_index,
-                    edge_attr=edge_attr,
-                    y=y,
-                    )
-        
-        if dl:
+          data = Data(edge_index=edge_index,
+                      edge_attr=edge_attr,
+                      y=y,
+                      )
+          
           if self.year:
             torch.save(data, os.path.join(self.processed_dir, f'world_trade_graph_{self.year}.pt'))
           else:
             torch.save(data, os.path.join(self.processed_dir, 'world_trade_graph.pt'))
+        else:
+          print('Found data, skipping download...')
+          if self.year:
+            idx = 0
+            for path in self.raw_paths:
+                if str(self.year) in path:
+                    break 
+                idx += 1
+            data = torch.load(self.processed_paths[1])
+
+          else:
+            data = self.processed_paths[0]
 
         self.data = data
 
