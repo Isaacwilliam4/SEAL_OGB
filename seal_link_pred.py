@@ -186,6 +186,23 @@ class WorldTradeDataset(Dataset):
                 num_nodes=len(self.ctry_data),
             )
 
+            # Print the type of the data object
+            print("Type of data object:", type(data))
+
+            # Print the edge_index
+            print("edge_index:", data.edge_index)
+            print("Type of edge_index:", type(data.edge_index))
+            print("Shape of edge_index:", data.edge_index.shape)
+
+            # Print the edge_attr
+            print("edge_attr:", data.edge_attr)
+            print("Type of edge_attr:", type(data.edge_attr))
+            print("Shape of edge_attr:", data.edge_attr.shape)
+
+            # Print the number of nodes
+            print("num_nodes:", data.num_nodes)
+            print("Type of num_nodes:", type(data.num_nodes))
+
             if self.year:
                 torch.save(
                     data,
