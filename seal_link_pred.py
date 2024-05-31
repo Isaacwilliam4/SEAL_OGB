@@ -181,7 +181,7 @@ class WorldTradeDataset(Dataset):
             y = np.ones(edge_index.shape[1])
 
             data = Data(
-                edge_index=edge_index,
+                edge_index=torch.from_numpy(edge_index),
                 edge_attr=edge_attr,
                 num_nodes=len(self.ctry_data),
             )
