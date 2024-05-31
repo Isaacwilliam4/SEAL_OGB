@@ -186,9 +186,6 @@ class WorldTradeDataset(Dataset):
                 num_nodes=len(self.ctry_data),
             )
 
-            # Print the type of the data object
-            print("Type of data object:", type(data))
-
             # Print the edge_index
             print("edge_index:", data.edge_index)
             print("Type of edge_index:", type(data.edge_index))
@@ -198,10 +195,6 @@ class WorldTradeDataset(Dataset):
             print("edge_attr:", data.edge_attr)
             print("Type of edge_attr:", type(data.edge_attr))
             print("Shape of edge_attr:", data.edge_attr.shape)
-
-            # Print the number of nodes
-            print("num_nodes:", data.num_nodes)
-            print("Type of num_nodes:", type(data.num_nodes))
 
             if self.year:
                 torch.save(
@@ -820,6 +813,15 @@ elif args.dataset.__contains__("world_trade"):
     data = dataset[0]
     transform = RandomLinkSplit(is_undirected=False, split_labels=True)
     split_edge = transform(data)
+    # convert tuple to a dictionary
+    split_edge = {
+        "train": split_edge[0],
+        "valid": split_edge[1],
+        "test": split_edge[2]
+    }
+    # Print the split_edge
+    print("split_edge", split_edge)
+    print("Type of split_edge:", type(split_edge))
 else:
     path = osp.join("dataset", args.dataset)
     dataset = Planetoid(path, args.dataset)
