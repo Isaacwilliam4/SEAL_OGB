@@ -278,6 +278,9 @@ def do_edge_split(dataset, fast_split=False, val_ratio=0.05, test_ratio=0.1):
 
 
 def get_pos_neg_edges(split, split_edge, edge_index, num_nodes, percent=100):
+    print(f"split: {split}")
+    print(f"split_edge keys: {split_edge.keys()}")
+    print(f"split_edge['train'] keys: {split_edge['train'].keys() if 'train' in split_edge else 'No train key'}")
     if "edge" in split_edge["train"]:
         pos_edge = split_edge[split]["edge"].t()
 
