@@ -186,11 +186,6 @@ class WorldTradeDataset(Dataset):
                 num_nodes=len(self.ctry_data),
             )
 
-            # Print the edge_attr
-            print("edge_attr:", data.edge_attr)
-            print("Type of edge_attr:", type(data.edge_attr))
-            print("Shape of edge_attr:", data.edge_attr.shape)
-
             if self.year:
                 torch.save(
                     data,
