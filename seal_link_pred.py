@@ -810,8 +810,8 @@ elif args.dataset.__contains__("world_trade"):
         "test": split_edge[2]
     }
     # Print the split_edge
-    print("split_edge", split_edge)
-    print("Type of split_edge:", type(split_edge))
+    print("split_edge[train]", split_edge['train'].keys())
+    print("split_edge[train]", split_edge['train'].edge_index)
 else:
     path = osp.join("dataset", args.dataset)
     dataset = Planetoid(path, args.dataset)
