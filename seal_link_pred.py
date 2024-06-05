@@ -182,8 +182,8 @@ class WorldTradeDataset(Dataset):
 
             data = Data(
                 edge_index=torch.from_numpy(edge_index),
-                edge_attr=edge_attr,
                 num_nodes=len(self.ctry_data),
+                #edge_attr=edge_attr,
             )
 
             if self.year:
@@ -795,13 +795,14 @@ if args.dataset.startswith("ogbl"):
 elif args.dataset == "world_trade":
     dataset = WorldTradeDataset(os.path.abspath("../compute/world_trade"))
     data = dataset[0]
-    transform = RandomLinkSplit(is_undirected=False, split_labels=True)
+    transform = RandomLinkSplit(is_undirected=False, split_labels=False)
     split_edge = transform(data)
 elif args.dataset.__contains__("world_trade"):
     year = args.dataset[-4:]
     dataset = WorldTradeDataset(os.path.abspath("../compute/world_trade"), year=year)
     data = dataset[0]
-    transform = RandomLinkSplit(is_undirected=False, split_labels=True)
+    print("data", data)
+    transform = RandomLinkSplit(is_undirected=False, split_labels=True, add_negative_train_samples=False)
     split_edge = transform(data)
     # convert tuple to a dictionary
     split_edge = {
@@ -809,9 +810,19 @@ elif args.dataset.__contains__("world_trade"):
         "valid": split_edge[1],
         "test": split_edge[2]
     }
+
+    for key in split_edge:
+        data_split = split_edge[key]
+        # Generate negative samples
+        neg_edge_index = negative_sampling(
+            edge_index=data_split.pos_edge_label_index,
+            num_nodes=data.num_nodes,
+            num_neg_samples=data_split.pos_edge_label_index.size(1)
+        )
+        split_edge[key].neg_edge_label_index = neg_edge_index
+
     # Print the split_edge
-    print("split_edge[train]", split_edge['train'].keys())
-    print("split_edge[train]", split_edge['train'].edge_index)
+    print("split_edge", split_edge)
 else:
     path = osp.join("dataset", args.dataset)
     dataset = Planetoid(path, args.dataset)
