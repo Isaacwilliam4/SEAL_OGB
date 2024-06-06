@@ -58,10 +58,12 @@ class WorldTradeDataset(Dataset):
         transform=None,
         pre_transform=None,
         pre_filter=None,
+        product_code=None,
     ):
         self.year = year
         self.reverse_mapping = None
         self.split_edge = None
+        self.product_code = product_code
         super().__init__(root, transform, pre_transform, pre_filter)
 
     @property
@@ -177,13 +179,18 @@ class WorldTradeDataset(Dataset):
 
             edge_index = map_func(edge_index)
 
-            edge_attr = trade_data[["t", "k", "v", "q"]].values
+            edge_attr = trade_data[["t", "k", "v", "q"]]
+            # add string code to get rid of 0 in front
+            if self.product_code:
+                edge_attr = edge_attr[edge_attr['k']==self.product_code]
+            
+            edge_attr = edge_attr.values
             y = np.ones(edge_index.shape[1])
 
             data = Data(
                 edge_index=torch.from_numpy(edge_index),
                 num_nodes=len(self.ctry_data),
-                #edge_attr=edge_attr,
+                edge_attr=edge_attr,
             )
 
             if self.year:
@@ -799,7 +806,7 @@ elif args.dataset == "world_trade":
     split_edge = transform(data)
 elif args.dataset.__contains__("world_trade"):
     year = args.dataset[-4:]
-    dataset = WorldTradeDataset(os.path.abspath("../compute/world_trade"), year=year)
+    dataset = WorldTradeDataset(os.path.abspath("../compute/world_trade"), year=year, product_code=200880)
     data = dataset[0]
     print("data", data)
     transform = RandomLinkSplit(is_undirected=False, split_labels=True)
@@ -821,7 +828,7 @@ elif args.dataset.__contains__("world_trade"):
         neg_edge_index = negative_sampling(
             edge_index=data_split.pos_edge_label_index,
             num_nodes=data.num_nodes,
-            num_neg_samples= 10 #num_neg_samples
+            num_neg_samples=num_neg_samples
         )
         split_edge_dict[key].neg_edge_label_index = neg_edge_index
 
