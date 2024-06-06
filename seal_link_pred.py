@@ -802,24 +802,38 @@ elif args.dataset.__contains__("world_trade"):
     dataset = WorldTradeDataset(os.path.abspath("../compute/world_trade"), year=year)
     data = dataset[0]
     print("data", data)
-    transform = RandomLinkSplit(is_undirected=False, split_labels=True, add_negative_train_samples=False)
-    split_edge = transform(data)
+    transform = RandomLinkSplit(is_undirected=False, split_labels=True)
+    split = transform(data)
     # convert tuple to a dictionary
-    split_edge = {
-        "train": split_edge[0],
-        "valid": split_edge[1],
-        "test": split_edge[2]
+    split_edge_dict = {
+        "train": split[0],
+        "valid": split[1],
+        "test": split[2]
     }
 
-    for key in split_edge:
-        data_split = split_edge[key]
+    split_edge = {}
+
+    for key in split_edge_dict:
+        data_split = split_edge_dict[key]
         # Generate negative samples
+        num_neg_samples = data_split.pos_edge_label_index.size(1)
+        print(f"{key} split - num_nodes: {data.num_nodes}, num_pos_samples: {num_neg_samples}")
         neg_edge_index = negative_sampling(
             edge_index=data_split.pos_edge_label_index,
             num_nodes=data.num_nodes,
-            num_neg_samples=data_split.pos_edge_label_index.size(1)
+            num_neg_samples= 10 #num_neg_samples
         )
-        split_edge[key].neg_edge_label_index = neg_edge_index
+        split_edge_dict[key].neg_edge_label_index = neg_edge_index
+
+        data_split = split_edge_dict[key]
+        # Transpose the tensors to get the shape [edges, 2]
+        pos_edge_index = data_split.pos_edge_label_index.t()
+        neg_edge_index = data_split.neg_edge_label_index.t()
+    
+        split_edge[key] = {
+            'edge': pos_edge_index,
+            'edge_neg': neg_edge_index
+        }
 
     # Print the split_edge
     print("split_edge", split_edge)
