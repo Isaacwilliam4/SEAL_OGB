@@ -174,15 +174,19 @@ class WorldTradeDataset(Dataset):
             rev_map_func = np.vectorize(lambda x: reverse_mapping[x])
             self.reverse_mapping = rev_map_func
             map_func = np.vectorize(lambda x: mapping[x])
-
-            edge_index = trade_data[["i", "j"]].values.T
-
-            edge_index = map_func(edge_index)
-
-            edge_attr = trade_data[["t", "k", "v", "q"]]
+ 
             # add string code to get rid of 0 in front
             if self.product_code:
+                self.product_code = int(str(self.product_code).lstrip('0'))
+                trade_data_product = trade_data[trade_data['k']==self.product_code]
+                edge_index = trade_data_product[["i", "j"]].values.T
+                edge_index = map_func(edge_index)
+                edge_attr = trade_data[["t", "k", "v", "q"]]
                 edge_attr = edge_attr[edge_attr['k']==self.product_code]
+            else:
+                edge_index = trade_data[["i", "j"]].values.T
+                edge_index = map_func(edge_index)
+                edge_attr = trade_data[["t", "k", "v", "q"]]
             
             edge_attr = edge_attr.values
             y = np.ones(edge_index.shape[1])
@@ -806,10 +810,10 @@ elif args.dataset == "world_trade":
     split_edge = transform(data)
 elif args.dataset.__contains__("world_trade"):
     year = args.dataset[-4:]
-    dataset = WorldTradeDataset(os.path.abspath("../compute/world_trade"), year=year, product_code=200880)
+    dataset = WorldTradeDataset(os.path.abspath("../compute/world_trade"), year=year, product_code='070200')
     data = dataset[0]
     print("data", data)
-    transform = RandomLinkSplit(is_undirected=False, split_labels=True)
+    transform = RandomLinkSplit(is_undirected=False, split_labels=True, add_negative_train_samples=False)
     split = transform(data)
     # convert tuple to a dictionary
     split_edge_dict = {
@@ -817,33 +821,26 @@ elif args.dataset.__contains__("world_trade"):
         "valid": split[1],
         "test": split[2]
     }
-
+    print("split_edge_dict", split_edge_dict)
     split_edge = {}
 
     for key in split_edge_dict:
-        data_split = split_edge_dict[key]
-        # Generate negative samples
-        num_neg_samples = data_split.pos_edge_label_index.size(1)
-        print(f"{key} split - num_nodes: {data.num_nodes}, num_pos_samples: {num_neg_samples}")
-        neg_edge_index = negative_sampling(
-            edge_index=data_split.pos_edge_label_index,
-            num_nodes=data.num_nodes,
-            num_neg_samples=num_neg_samples
-        )
-        split_edge_dict[key].neg_edge_label_index = neg_edge_index
+        if key == 'train':
+            data_split = split_edge_dict[key]
+            pos_edge_index = data_split.pos_edge_label_index.t()
+            split_edge[key] = {
+                'edge': pos_edge_index
+            }
 
-        data_split = split_edge_dict[key]
-        # Transpose the tensors to get the shape [edges, 2]
-        pos_edge_index = data_split.pos_edge_label_index.t()
-        neg_edge_index = data_split.neg_edge_label_index.t()
-    
-        split_edge[key] = {
-            'edge': pos_edge_index,
-            'edge_neg': neg_edge_index
-        }
+        else:
+            data_split = split_edge_dict[key]
+            pos_edge_index = data_split.pos_edge_label_index.t()
+            neg_edge_index = data_split.neg_edge_label_index.t()
+            split_edge[key] = {
+                'edge': pos_edge_index,
+                'edge_neg': neg_edge_index
+            }
 
-    # Print the split_edge
-    print("split_edge", split_edge)
 else:
     path = osp.join("dataset", args.dataset)
     dataset = Planetoid(path, args.dataset)
