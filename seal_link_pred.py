@@ -804,10 +804,35 @@ if args.dataset.startswith("ogbl"):
         data.x[:, 1] = torch.nn.functional.normalize(data.x[:, 1], dim=0)
         data.x[:, 2] = torch.nn.functional.normalize(data.x[:, 2], dim=0)
 elif args.dataset == "world_trade":
-    dataset = WorldTradeDataset(os.path.abspath("../compute/world_trade"))
+    dataset = WorldTradeDataset(os.path.abspath("../compute/world_trade"), product_code='070200')
     data = dataset[0]
-    transform = RandomLinkSplit(is_undirected=False, split_labels=False)
-    split_edge = transform(data)
+    transform = RandomLinkSplit(is_undirected=False, split_labels=False, add_negative_train_samples=False)
+    split = transform(data)
+
+    split_edge_dict = {
+        "train": split[0],
+        "valid": split[1],
+        "test": split[2]
+    }
+    print("split_edge_dict", split_edge_dict)
+    split_edge = {}
+
+    for key in split_edge_dict:
+        if key == 'train':
+            data_split = split_edge_dict[key]
+            pos_edge_index = data_split.pos_edge_label_index.t()
+            split_edge[key] = {
+                'edge': pos_edge_index
+            }
+
+        else:
+            data_split = split_edge_dict[key]
+            pos_edge_index = data_split.pos_edge_label_index.t()
+            neg_edge_index = data_split.neg_edge_label_index.t()
+            split_edge[key] = {
+                'edge': pos_edge_index,
+                'edge_neg': neg_edge_index
+            }
 elif args.dataset.__contains__("world_trade"):
     year = args.dataset[-4:]
     dataset = WorldTradeDataset(os.path.abspath("../compute/world_trade"), year=year, product_code='070200')
@@ -815,7 +840,7 @@ elif args.dataset.__contains__("world_trade"):
     print("data", data)
     transform = RandomLinkSplit(is_undirected=False, split_labels=True, add_negative_train_samples=False)
     split = transform(data)
-    # convert tuple to a dictionary
+    
     split_edge_dict = {
         "train": split[0],
         "valid": split[1],
