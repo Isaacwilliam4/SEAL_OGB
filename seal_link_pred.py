@@ -866,6 +866,16 @@ elif args.dataset.__contains__("world_trade"):
                 'edge_neg': neg_edge_index
             }
 
+    print("Checking for overlaps")
+    train_edges = set(tuple(edge) for edge in split_edge_dict['train'].pos_edge_label_index.T.tolist())
+    valid_pos_edges = set(tuple(edge) for edge in split_edge_dict['valid'].pos_edge_label_index.T.tolist())
+    test_pos_edges = set(tuple(edge) for edge in split_edge_dict['test'].pos_edge_label_index.T.tolist())
+
+    # Check overlaps
+    print("train and valid", train_edges & valid_pos_edges)
+    print("train and test", train_edges & test_pos_edges)
+    print("valid and test", valid_pos_edges & test_pos_edges)
+
 else:
     path = osp.join("dataset", args.dataset)
     dataset = Planetoid(path, args.dataset)
