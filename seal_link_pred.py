@@ -40,6 +40,20 @@ warnings.simplefilter("ignore", SparseEfficiencyWarning)
 from utils import *
 from models import *
 
+def estimate_line_count(file_path, file_type, encoding="latin1"):
+    if file_type == "gzip":
+        with gzip.open(file_path, 'rt', encoding=encoding) as f:
+            for i, _ in enumerate(f):
+                pass
+        return i + 1
+    elif file_type == "csv":
+        with open(file_path, 'rt', encoding=encoding) as f:
+            for i, _ in enumerate(f):
+                pass
+        return i + 1
+    else:
+        raise ValueError('Type must be either "csv" or "gzip"')
+
 
 class WorldTradeDataset(Dataset):
     def __init__(
@@ -114,31 +128,57 @@ class WorldTradeDataset(Dataset):
     def read_data(self, path, file_type="gzip", encoding="latin1"):
         path = os.path.abspath(path)
 
+        line_count = estimate_line_count(path, file_type, encoding)
+
         if file_type == "gzip":
-            with gzip.open(
-                path, "rt", encoding=encoding
-            ) as f:  # 'rt' mode to read the file as text
-                line_count = sum(1 for line in f)
-            with gzip.open(path, "rt", encoding=encoding) as file:
-                # Initialize tqdm with the total number of lines directly in the read_csv
+            with gzip.open(path, 'rt', encoding=encoding) as file:
                 tqdm_iterator = tqdm(
                     pd.read_csv(file, iterator=True, chunksize=1000),
-                    total=round(line_count / 2000),
+                    total=round(line_count / 1000),
+                    unit="chunks"
                 )
                 df = pd.concat([chunk for chunk in tqdm_iterator])
         elif file_type == "csv":
-            with open(path, "rt", encoding=encoding) as f:
-                line_count = sum(1 for line in f)
-            with open(path, "rt", encoding=encoding) as file:
+            with open(path, 'rt', encoding=encoding) as file:
                 tqdm_iterator = tqdm(
                     pd.read_csv(file, iterator=True, chunksize=1000),
-                    total=round(line_count / 2000),
+                    total=round(line_count / 1000),
+                    unit="chunks"
                 )
                 df = pd.concat([chunk for chunk in tqdm_iterator])
         else:
             raise ValueError('Type must be either "csv" or "gzip"')
 
         return df
+
+    # def read_data(self, path, file_type="gzip", encoding="latin1"):
+    #     path = os.path.abspath(path)
+
+    #     if file_type == "gzip":
+    #         with gzip.open(
+    #             path, "rt", encoding=encoding
+    #         ) as f:  # 'rt' mode to read the file as text
+    #             line_count = sum(1 for line in f)
+    #         with gzip.open(path, "rt", encoding=encoding) as file:
+    #             # Initialize tqdm with the total number of lines directly in the read_csv
+    #             tqdm_iterator = tqdm(
+    #                 pd.read_csv(file, iterator=True, chunksize=1000),
+    #                 total=round(line_count / 2000),
+    #             )
+    #             df = pd.concat([chunk for chunk in tqdm_iterator])
+    #     elif file_type == "csv":
+    #         with open(path, "rt", encoding=encoding) as f:
+    #             line_count = sum(1 for line in f)
+    #         with open(path, "rt", encoding=encoding) as file:
+    #             tqdm_iterator = tqdm(
+    #                 pd.read_csv(file, iterator=True, chunksize=1000),
+    #                 total=round(line_count / 2000),
+    #             )
+    #             df = pd.concat([chunk for chunk in tqdm_iterator])
+    #     else:
+    #         raise ValueError('Type must be either "csv" or "gzip"')
+
+    #     return df
 
     def get_edge_split():
         pass
@@ -806,7 +846,7 @@ if args.dataset.startswith("ogbl"):
 elif args.dataset == "world_trade":
     dataset = WorldTradeDataset(os.path.abspath("../compute/world_trade"), product_code='070200')
     data = dataset[0]
-    transform = RandomLinkSplit(is_undirected=False, split_labels=False, add_negative_train_samples=False)
+    transform = RandomLinkSplit(is_undirected=False, split_labels=True, add_negative_train_samples=False)
     split = transform(data)
 
     split_edge_dict = {
@@ -865,16 +905,6 @@ elif args.dataset.__contains__("world_trade"):
                 'edge': pos_edge_index,
                 'edge_neg': neg_edge_index
             }
-
-    print("Checking for overlaps")
-    train_edges = set(tuple(edge) for edge in split_edge_dict['train'].pos_edge_label_index.T.tolist())
-    valid_pos_edges = set(tuple(edge) for edge in split_edge_dict['valid'].pos_edge_label_index.T.tolist())
-    test_pos_edges = set(tuple(edge) for edge in split_edge_dict['test'].pos_edge_label_index.T.tolist())
-
-    # Check overlaps
-    print("train and valid", train_edges & valid_pos_edges)
-    print("train and test", train_edges & test_pos_edges)
-    print("valid and test", valid_pos_edges & test_pos_edges)
 
 else:
     path = osp.join("dataset", args.dataset)

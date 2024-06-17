@@ -1,7 +1,7 @@
 #!/bin/bash
 #***** NOTE: run this using: sg grp_supplychainai "sbatch thefilename"
 
-#SBATCH --time=1:00:00   # walltime
+#SBATCH --time=48:00:00   # walltime
 #SBATCH --ntasks=4   # number of processor cores (i.e. tasks)
 #SBATCH --nodes=1   # number of nodes
 #SBATCH --gpus=1
@@ -20,4 +20,4 @@ export OMP_NUM_THREADS=$SLURM_CPUS_ON_NODE
 
 # LOAD MODULES, INSERT CODE, AND RUN YOUR PROGRAMS HERE
 
-python seal_link_pred.py --dataset world_trade_1995 --fast_split  --num_hops 1 --use_feature --eval_steps 1 --runs 3 --epochs 10 --dynamic_train --dynamic_val --dynamic_test --train_percent 2 --val_percent 1 --test_percent 1
+python seal_link_pred.py --dataset world_trade --fast_split  --num_hops 1 --use_feature --eval_steps 1 --runs 3 --epochs 10 --dynamic_train --dynamic_val --dynamic_test --train_percent 2 --val_percent 1 --test_percent 1
