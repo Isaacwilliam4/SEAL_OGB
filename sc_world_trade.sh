@@ -5,7 +5,7 @@
 #SBATCH --ntasks=4   # number of processor cores (i.e. tasks)
 #SBATCH --nodes=1   # number of nodes
 #SBATCH --gpus=1
-#SBATCH -C 'pascal'   # features syntax (use quotes): -C 'a&b&c&d'
+#SBATCH -C 'pascal|kepler'   # features syntax (use quotes): -C 'a&b&c&d'
 #SBATCH --mem-per-cpu=32G  # memory per CPU core
 #SBATCH -J "seal_test"   # job name
 

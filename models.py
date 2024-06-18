@@ -151,6 +151,8 @@ class DGCNN(torch.nn.Module):
                     sampled_train = train_dataset[:1000]
                 else:
                     sampled_train = train_dataset
+                print(f"Length of sampled_train: {len(sampled_train)}")
+                print(f"Content of sampled_train: {sampled_train}")
                 num_nodes = sorted([g.num_nodes for g in sampled_train])
                 k = num_nodes[int(math.ceil(k * len(num_nodes))) - 1]
                 k = max(10, k)

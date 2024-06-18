@@ -128,57 +128,55 @@ class WorldTradeDataset(Dataset):
     def read_data(self, path, file_type="gzip", encoding="latin1"):
         path = os.path.abspath(path)
 
-        line_count = estimate_line_count(path, file_type, encoding)
-
-        if file_type == "gzip":
-            with gzip.open(path, 'rt', encoding=encoding) as file:
-                tqdm_iterator = tqdm(
-                    pd.read_csv(file, iterator=True, chunksize=1000),
-                    total=round(line_count / 1000),
-                    unit="chunks"
-                )
-                df = pd.concat([chunk for chunk in tqdm_iterator])
-        elif file_type == "csv":
-            with open(path, 'rt', encoding=encoding) as file:
-                tqdm_iterator = tqdm(
-                    pd.read_csv(file, iterator=True, chunksize=1000),
-                    total=round(line_count / 1000),
-                    unit="chunks"
-                )
-                df = pd.concat([chunk for chunk in tqdm_iterator])
+        if self.year:
+            if file_type == "gzip":
+                with gzip.open(
+                    path, "rt", encoding=encoding
+                ) as f:  # 'rt' mode to read the file as text
+                    line_count = sum(1 for line in f)
+                with gzip.open(path, "rt", encoding=encoding) as file:
+                    # Initialize tqdm with the total number of lines directly in the read_csv
+                    tqdm_iterator = tqdm(
+                        pd.read_csv(file, iterator=True, chunksize=1000),
+                        total=round(line_count / 2000),
+                    )
+                    df = pd.concat([chunk for chunk in tqdm_iterator])
+            elif file_type == "csv":
+                with open(path, "rt", encoding=encoding) as f:
+                    line_count = sum(1 for line in f)
+                with open(path, "rt", encoding=encoding) as file:
+                    tqdm_iterator = tqdm(
+                        pd.read_csv(file, iterator=True, chunksize=1000),
+                        total=round(line_count / 2000),
+                    )
+                    df = pd.concat([chunk for chunk in tqdm_iterator])
+            else:
+                raise ValueError('Type must be either "csv" or "gzip"')
+            
         else:
-            raise ValueError('Type must be either "csv" or "gzip"')
+
+            line_count = estimate_line_count(path, file_type, encoding)
+
+            if file_type == "gzip":
+                with gzip.open(path, 'rt', encoding=encoding) as file:
+                    tqdm_iterator = tqdm(
+                        pd.read_csv(file, iterator=True, chunksize=1000),
+                        total=round(line_count / 1000),
+                        unit="chunks"
+                    )
+                    df = pd.concat([chunk for chunk in tqdm_iterator])
+            elif file_type == "csv":
+                with open(path, 'rt', encoding=encoding) as file:
+                    tqdm_iterator = tqdm(
+                        pd.read_csv(file, iterator=True, chunksize=1000),
+                        total=round(line_count / 1000),
+                        unit="chunks"
+                    )
+                    df = pd.concat([chunk for chunk in tqdm_iterator])
+            else:
+                raise ValueError('Type must be either "csv" or "gzip"')
 
         return df
-
-    # def read_data(self, path, file_type="gzip", encoding="latin1"):
-    #     path = os.path.abspath(path)
-
-    #     if file_type == "gzip":
-    #         with gzip.open(
-    #             path, "rt", encoding=encoding
-    #         ) as f:  # 'rt' mode to read the file as text
-    #             line_count = sum(1 for line in f)
-    #         with gzip.open(path, "rt", encoding=encoding) as file:
-    #             # Initialize tqdm with the total number of lines directly in the read_csv
-    #             tqdm_iterator = tqdm(
-    #                 pd.read_csv(file, iterator=True, chunksize=1000),
-    #                 total=round(line_count / 2000),
-    #             )
-    #             df = pd.concat([chunk for chunk in tqdm_iterator])
-    #     elif file_type == "csv":
-    #         with open(path, "rt", encoding=encoding) as f:
-    #             line_count = sum(1 for line in f)
-    #         with open(path, "rt", encoding=encoding) as file:
-    #             tqdm_iterator = tqdm(
-    #                 pd.read_csv(file, iterator=True, chunksize=1000),
-    #                 total=round(line_count / 2000),
-    #             )
-    #             df = pd.concat([chunk for chunk in tqdm_iterator])
-    #     else:
-    #         raise ValueError('Type must be either "csv" or "gzip"')
-
-    #     return df
 
     def get_edge_split():
         pass
