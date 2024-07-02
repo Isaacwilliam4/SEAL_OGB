@@ -143,6 +143,8 @@ class DGCNN(torch.nn.Module):
         self.use_feature = use_feature
         self.node_embedding = node_embedding
 
+        print(f"Dynamic train: {dynamic_train}")
+
         if k <= 1:  # Transform percentile to number.
             if train_dataset is None:
                 k = 30
@@ -151,9 +153,23 @@ class DGCNN(torch.nn.Module):
                     sampled_train = train_dataset[:1000]
                 else:
                     sampled_train = train_dataset
-                print(f"Length of sampled_train: {len(sampled_train)}")
-                print(f"Content of sampled_train: {sampled_train}")
-                num_nodes = sorted([g.num_nodes for g in sampled_train])
+
+                num_nodes = []
+                _sampled_train = []
+
+                try:
+                    for i, g in enumerate(sampled_train):
+                        if i == 1000:
+                            break
+                        num_nodes.append(g.num_nodes)
+                        _sampled_train.append(g)
+                    num_nodes = sorted(num_nodes)
+                    sampled_train = _sampled_train
+                    #num_nodes = sorted([g.num_nodes for g in sampled_train])
+                except IndexError as e:
+                    print(f"IndexError: {e}")
+
+               # num_nodes = sorted([g.num_nodes for g in sampled_train])
                 k = num_nodes[int(math.ceil(k * len(num_nodes))) - 1]
                 k = max(10, k)
         self.k = int(k)
