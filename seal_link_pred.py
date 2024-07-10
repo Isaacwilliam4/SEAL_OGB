@@ -802,6 +802,11 @@ parser.add_argument(
     default=None,
     help="test a link prediction heuristic (CN or AA)",
 )
+# train on current year, test on future year
+parser.add_argument(
+    "--next_year", action="store_true", help="Flag to indicate prediction for the next year"
+)
+
 args = parser.parse_args()
 
 if args.save_appendix == "":
@@ -852,7 +857,6 @@ elif args.dataset == "world_trade":
         "valid": split[1],
         "test": split[2]
     }
-    print("split_edge_dict", split_edge_dict)
     split_edge = {}
 
     for key in split_edge_dict:
@@ -875,7 +879,6 @@ elif args.dataset.__contains__("world_trade"):
     year = args.dataset[-4:]
     dataset = WorldTradeDataset(os.path.abspath("../compute/world_trade"), year=year, product_code='070200')
     data = dataset[0]
-    print("data", data)
     transform = RandomLinkSplit(is_undirected=False, split_labels=True, add_negative_train_samples=False)
     split = transform(data)
     
@@ -884,7 +887,6 @@ elif args.dataset.__contains__("world_trade"):
         "valid": split[1],
         "test": split[2]
     }
-    print("split_edge_dict", split_edge_dict)
     split_edge = {}
 
     for key in split_edge_dict:
@@ -903,6 +905,38 @@ elif args.dataset.__contains__("world_trade"):
                 'edge': pos_edge_index,
                 'edge_neg': neg_edge_index
             }
+
+    # grabbing future year for testing
+    if args.next_year:
+        print("Grabbing Next Year")
+        future_year = str(int(year) + 1)
+        next_dataset = WorldTradeDataset(os.path.abspath("../compute/world_trade"), year=future_year, product_code='070200')
+        next_data = next_dataset[0]
+        next_split = transform(next_data)
+    
+        next_split_edge_dict = {
+            "train": next_split[0],
+            "valid": next_split[1],
+            "test": next_split[2]
+        }
+        next_split_edge = {}
+
+        for key in next_split_edge_dict:
+            if key == 'train':
+                data_split = next_split_edge_dict[key]
+                pos_edge_index = data_split.pos_edge_label_index.t()
+                next_split_edge[key] = {
+                    'edge': pos_edge_index
+                }
+
+            else:
+                data_split = next_split_edge_dict[key]
+                pos_edge_index = data_split.pos_edge_label_index.t()
+                neg_edge_index = data_split.neg_edge_label_index.t()
+                next_split_edge[key] = {
+                    'edge': pos_edge_index,
+                    'edge_neg': neg_edge_index
+                }
 
 else:
     path = osp.join("dataset", args.dataset)
@@ -1022,6 +1056,7 @@ if args.use_heuristic:
 
 # SEAL.
 path = dataset.root + "_seal{}".format(args.data_appendix)
+print('Path', path)
 use_coalesce = True if args.dataset == "ogbl-collab" else False
 if not args.dynamic_train and not args.dynamic_val and not args.dynamic_test:
     args.num_workers = 0
@@ -1078,19 +1113,41 @@ val_dataset = eval(dataset_class)(
     directed=directed,
 )
 dataset_class = "SEALDynamicDataset" if args.dynamic_test else "SEALDataset"
-test_dataset = eval(dataset_class)(
-    path,
-    data,
-    split_edge,
-    num_hops=args.num_hops,
-    percent=args.test_percent,
-    split="test",
-    use_coalesce=use_coalesce,
-    node_label=args.node_label,
-    ratio_per_hop=args.ratio_per_hop,
-    max_nodes_per_hop=args.max_nodes_per_hop,
-    directed=directed,
-)
+
+# use next_year as testing if argument
+if args.next_year:
+    print("Using Next Year for Testing")
+    next_path = next_dataset.root + "_seal{}".format(args.data_appendix)
+    print('Next_Path', next_path)
+
+    test_dataset = eval(dataset_class)(
+        next_path,
+        next_data,
+        next_split_edge,
+        num_hops=args.num_hops,
+        percent=args.test_percent,
+        split="test",
+        use_coalesce=use_coalesce,
+        node_label=args.node_label,
+        ratio_per_hop=args.ratio_per_hop,
+        max_nodes_per_hop=args.max_nodes_per_hop,
+        directed=directed,
+    )
+
+else:
+    test_dataset = eval(dataset_class)(
+        path,
+        data,
+        split_edge,
+        num_hops=args.num_hops,
+        percent=args.test_percent,
+        split="test",
+        use_coalesce=use_coalesce,
+        node_label=args.node_label,
+        ratio_per_hop=args.ratio_per_hop,
+        max_nodes_per_hop=args.max_nodes_per_hop,
+        directed=directed,
+    )
 
 max_z = 1000  # set a large max_z so that every z has embeddings to look up
 

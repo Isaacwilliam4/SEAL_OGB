@@ -143,8 +143,6 @@ class DGCNN(torch.nn.Module):
         self.use_feature = use_feature
         self.node_embedding = node_embedding
 
-        print(f"Dynamic train: {dynamic_train}")
-
         if k <= 1:  # Transform percentile to number.
             if train_dataset is None:
                 k = 30
