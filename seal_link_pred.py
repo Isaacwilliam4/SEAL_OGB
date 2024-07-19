@@ -421,6 +421,7 @@ class SEALDynamicDataset(Dataset):
         split="train",
         use_coalesce=False,
         node_label="drnl",
+        direct_label=False,
         ratio_per_hop=1.0,
         max_nodes_per_hop=None,
         directed=False,
@@ -432,6 +433,7 @@ class SEALDynamicDataset(Dataset):
         self.percent = percent
         self.use_coalesce = use_coalesce
         self.node_label = node_label
+        self.direct_label = direct_label
         self.ratio_per_hop = ratio_per_hop
         self.max_nodes_per_hop = max_nodes_per_hop
         self.directed = directed
@@ -489,7 +491,7 @@ class SEALDynamicDataset(Dataset):
             directed=self.directed,
             A_csc=self.A_csc,
         )
-        data = construct_pyg_graph(*tmp, self.node_label)
+        data = construct_pyg_graph(*tmp, self.node_label, self.direct_label)
 
         return data
 
@@ -503,9 +505,10 @@ def train():
         data = data.to(device)
         optimizer.zero_grad()
         x = data.x if args.use_feature else None
+        dl = data.dl.to(device) if args.use_dl else None
         edge_weight = data.edge_weight if args.use_edge_weight else None
         node_id = data.node_id if emb else None
-        logits = model(data.z, data.edge_index, data.batch, x, edge_weight, node_id)
+        logits = model(data.z, data.edge_index, data.batch, dl, x, edge_weight, node_id)
         loss = BCEWithLogitsLoss()(logits.view(-1), data.y.to(torch.float))
         loss.backward()
         optimizer.step()
@@ -522,9 +525,10 @@ def test():
     for data in tqdm(val_loader, ncols=70):
         data = data.to(device)
         x = data.x if args.use_feature else None
+        dl = data.dl.to(device) if args.use_dl else None
         edge_weight = data.edge_weight if args.use_edge_weight else None
         node_id = data.node_id if emb else None
-        logits = model(data.z, data.edge_index, data.batch, x, edge_weight, node_id)
+        logits = model(data.z, data.edge_index, data.batch, dl, x, edge_weight, node_id)
         y_pred.append(logits.view(-1).cpu())
         y_true.append(data.y.view(-1).cpu().to(torch.float))
     val_pred, val_true = torch.cat(y_pred), torch.cat(y_true)
@@ -535,9 +539,10 @@ def test():
     for data in tqdm(test_loader, ncols=70):
         data = data.to(device)
         x = data.x if args.use_feature else None
+        dl = data.dl.to(device) if args.use_dl else None
         edge_weight = data.edge_weight if args.use_edge_weight else None
         node_id = data.node_id if emb else None
-        logits = model(data.z, data.edge_index, data.batch, x, edge_weight, node_id)
+        logits = model(data.z, data.edge_index, data.batch, dl, x, edge_weight, node_id)
         y_pred.append(logits.view(-1).cpu())
         y_true.append(data.y.view(-1).cpu().to(torch.float))
     test_pred, test_true = torch.cat(y_pred), torch.cat(y_true)
@@ -569,10 +574,11 @@ def test_multiple_models(models):
     for data in tqdm(val_loader, ncols=70):
         data = data.to(device)
         x = data.x if args.use_feature else None
+        dl = data.dl.to(device) if args.use_dl else None
         edge_weight = data.edge_weight if args.use_edge_weight else None
         node_id = data.node_id if emb else None
         for i, m in enumerate(models):
-            logits = m(data.z, data.edge_index, data.batch, x, edge_weight, node_id)
+            logits = m(data.z, data.edge_index, data.batch, dl, x, edge_weight, node_id)
             y_pred[i].append(logits.view(-1).cpu())
             y_true[i].append(data.y.view(-1).cpu().to(torch.float))
     val_pred = [torch.cat(y_pred[i]) for i in range(len(models))]
@@ -584,10 +590,11 @@ def test_multiple_models(models):
     for data in tqdm(test_loader, ncols=70):
         data = data.to(device)
         x = data.x if args.use_feature else None
+        dl = data.dl.to(device) if args.use_dl else None
         edge_weight = data.edge_weight if args.use_edge_weight else None
         node_id = data.node_id if emb else None
         for i, m in enumerate(models):
-            logits = m(data.z, data.edge_index, data.batch, x, edge_weight, node_id)
+            logits = m(data.z, data.edge_index, data.batch, dl, x, edge_weight, node_id)
             y_pred[i].append(logits.view(-1).cpu())
             y_true[i].append(data.y.view(-1).cpu().to(torch.float))
     test_pred = [torch.cat(y_pred[i]) for i in range(len(models))]
@@ -807,6 +814,12 @@ parser.add_argument(
     "--next_year", action="store_true", help="Flag to indicate prediction for the next year"
 )
 
+# use dl, use direct_label embedding
+parser.add_argument(
+    "--use_dl", action="store_true", help="Flag to indicate inclusion of DirectLabel"
+)
+
+
 args = parser.parse_args()
 
 if args.save_appendix == "":
@@ -956,7 +969,10 @@ elif args.dataset.startswith("ogbl"):
     directed = False
 else:  # assume other datasets are undirected
     args.eval_metric = "auc"
-    directed = False
+    if args.dataset.__contains__("world_trade"):
+        directed = True
+    else:
+        directed = False
 
 if args.use_valedges_as_input:
     val_edge_index = split_edge["valid"]["edge"].t()
@@ -1071,10 +1087,15 @@ train_dataset = eval(dataset_class)(
     split="train",
     use_coalesce=use_coalesce,
     node_label=args.node_label,
+    direct_label=args.use_dl,
     ratio_per_hop=args.ratio_per_hop,
     max_nodes_per_hop=args.max_nodes_per_hop,
     directed=directed,
 )
+print('Z', train_dataset[0].z.size())
+print('Z type', type(train_dataset[0].z))
+print('dl', train_dataset[0].dl.size())
+print('dl type', type(train_dataset[0].dl))
 if False:  # visualize some graphs
     import networkx as nx
     from torch_geometric.utils import to_networkx
@@ -1108,6 +1129,7 @@ val_dataset = eval(dataset_class)(
     split="valid",
     use_coalesce=use_coalesce,
     node_label=args.node_label,
+    direct_label=args.use_dl,
     ratio_per_hop=args.ratio_per_hop,
     max_nodes_per_hop=args.max_nodes_per_hop,
     directed=directed,
@@ -1129,6 +1151,7 @@ if args.next_year:
         split="test",
         use_coalesce=use_coalesce,
         node_label=args.node_label,
+        direct_label=args.use_dl,
         ratio_per_hop=args.ratio_per_hop,
         max_nodes_per_hop=args.max_nodes_per_hop,
         directed=directed,
@@ -1144,6 +1167,7 @@ else:
         split="test",
         use_coalesce=use_coalesce,
         node_label=args.node_label,
+        direct_label=args.use_dl,
         ratio_per_hop=args.ratio_per_hop,
         max_nodes_per_hop=args.max_nodes_per_hop,
         directed=directed,

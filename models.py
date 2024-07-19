@@ -200,14 +200,34 @@ class DGCNN(torch.nn.Module):
         self.lin1 = Linear(dense_dim, 128)
         self.lin2 = Linear(128, 1)
 
-    def forward(self, z, edge_index, batch, x=None, edge_weight=None, node_id=None):
+# dl_label=None in parameters
+    def forward(self, z, edge_index, batch, dl=None, x=None, edge_weight=None, node_id=None):
         z_emb = self.z_embedding(z)
+        print('dl', dl.size())
+        print('dl type', type(dl))
+        print('dldtype', dl.dtype)
         if z_emb.ndim == 3:  # in case z has multiple integer labels
             z_emb = z_emb.sum(dim=1)
         if self.use_feature and x is not None:
             x = torch.cat([z_emb, x.to(torch.float)], 1)
         else:
             x = z_emb
+        # make another one with condition AND dllabel
+        if dl is not None:
+            #dl_embedding = Embedding(100, 32)
+            dl_emb = self.z_embedding(dl)
+            print('dl device', dl_emb.device)
+            print('x device', x.device)
+            print('Z', z_emb.size())
+            print('Z type', type(z_emb))
+            print('dl', dl_emb.size())
+            print('dl type', type(dl_emb))
+            print('dtype', dl_emb.dtype)
+            print('zdtype', z_emb.dtype)
+            print('x', x.size())
+            print('x type', type(x))
+            print('xdtype', x.dtype)
+            x = torch.cat([dl_emb, x.to(torch.float)], 1)
         if self.node_embedding is not None and node_id is not None:
             n_emb = self.node_embedding(node_id)
             x = torch.cat([x, n_emb], 1)

@@ -156,8 +156,54 @@ def de_plus_node_labeling(adj, src, dst, max_dist=100):
 
     return dist.to(torch.long)
 
+# direct label function
+def directed_path_contribution(adj, node):
+    num_nodes = adj.shape[0]
+    contribution = np.zeros(num_nodes)
+    paths = shortest_path(adj, directed=False, unweighted=True, return_predecessors=True, indices=node)
+    # NEED TO FIGURE OUT HOW TO PICK SHORTEST PATH WITH MAX ABS VALUE
+    predecessors = paths[1]
 
-def construct_pyg_graph(node_ids, adj, dists, node_features, y, node_label="drnl"):
+    for i in range(num_nodes):
+
+        if predecessors[i] == -9999:
+            if i == node:
+                # Node has 0 distance to itself
+                path_contribution = 0
+                contribution[i] = path_contribution
+            continue  # Node is unreachable
+
+        path_contribution = 0
+        current_node = i
+        while current_node != node and predecessors[current_node] != -9999:
+            pred_node = predecessors[current_node]
+            if pred_node == -9999:
+                break  # Unreachable node
+
+            if adj[pred_node, current_node] > 0 and adj[current_node, pred_node] == 0:
+                path_contribution -= 1
+            elif adj[current_node, pred_node] > 0 and adj[pred_node, current_node] == 0:
+                path_contribution += 1
+
+
+            current_node = pred_node
+
+        contribution[i] = path_contribution
+    # max_abs_contribution = contribution[np.argmax(np.abs(contribution))]
+    return contribution
+
+def direct_labeling(adj, src, dst):
+    # src, dst = (dst, src) if src > dst else (src, dst)
+    # for _ in range(adj.shape[0])  
+    contribution2src = np.array(directed_path_contribution(adj, src))
+    contribution2dst = np.array(directed_path_contribution(adj, dst))
+
+    labels = contribution2src - contribution2dst
+
+    return torch.tensor(labels).to(torch.long)
+    
+
+def construct_pyg_graph(node_ids, adj, dists, node_features, y, node_label="drnl", direct_label=False):
     # Construct a pytorch_geometric graph from a scipy csr adjacency matrix.
     u, v, r = ssp.find(adj)
     num_nodes = adj.shape[0]
@@ -168,7 +214,10 @@ def construct_pyg_graph(node_ids, adj, dists, node_features, y, node_label="drnl
     edge_index = torch.stack([u, v], 0)
     edge_weight = r.to(torch.float)
     y = torch.tensor([y])
-    if node_label == "drnl":  # DRNL
+    if node_label == "drnl" and direct_label == True:  # DRNL and DirectLabel
+        z = drnl_node_labeling(adj, 0, 1)
+        dl = direct_labeling(adj, 0, 1)
+    elif node_label == "drnl":  # DRNL
         z = drnl_node_labeling(adj, 0, 1)
     elif node_label == "hop":  # mininum distance to src and dst
         z = torch.tensor(dists)
@@ -183,15 +232,30 @@ def construct_pyg_graph(node_ids, adj, dists, node_features, y, node_label="drnl
         z[z > 100] = 100  # limit the maximum label to 100
     else:
         z = torch.zeros(len(dists), dtype=torch.long)
-    data = Data(
-        node_features,
-        edge_index,
-        edge_weight=edge_weight,
-        y=y,
-        z=z,
-        node_id=node_ids,
-        num_nodes=num_nodes,
-    )
+
+    # add in DL label option in here (with condition of use_dl), with def function above
+    if direct_label == True:
+        data = Data(
+            node_features,
+            edge_index,
+            edge_weight=edge_weight,
+            y=y,
+            z=z,
+            dl=dl,
+            node_id=node_ids,
+            num_nodes=num_nodes,
+        )
+    else:
+        data = Data(
+            node_features,
+            edge_index,
+            edge_weight=edge_weight,
+            y=y,
+            z=z,
+            node_id=node_ids,
+            num_nodes=num_nodes,
+        )
+
     return data
 
 
