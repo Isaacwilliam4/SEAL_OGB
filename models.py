@@ -214,20 +214,28 @@ class DGCNN(torch.nn.Module):
             x = z_emb
         # make another one with condition AND dllabel
         if dl is not None:
-            #dl_embedding = Embedding(100, 32)
-            dl_emb = self.z_embedding(dl)
-            print('dl device', dl_emb.device)
+            print('dl device', dl.device)
             print('x device', x.device)
+            print(f"Tensor Z shape: {z.shape}")
+            print(f"Tensor Z_emb shape: {z_emb.shape}")
+            print(f"Tensor dl shape: {dl.shape}")
+            print('z content', z)
+            print('dl content', dl)
+            # when I do all 0's or copy Z's it works
+            # no negative values???
+            dl = torch.abs(dl)
+            dl_emb = self.z_embedding(dl)
+            print('dl_emb device', dl_emb.device)
             print('Z', z_emb.size())
             print('Z type', type(z_emb))
-            print('dl', dl_emb.size())
-            print('dl type', type(dl_emb))
-            print('dtype', dl_emb.dtype)
             print('zdtype', z_emb.dtype)
+            print('dl_emb', dl_emb.size())
+            print('dl_emb type', type(dl_emb))
+            print('d_emb type', dl_emb.dtype)
             print('x', x.size())
             print('x type', type(x))
             print('xdtype', x.dtype)
-            x = torch.cat([dl_emb, x.to(torch.float)], 1)
+            x = torch.cat([dl_emb, x], 1)
         if self.node_embedding is not None and node_id is not None:
             n_emb = self.node_embedding(node_id)
             x = torch.cat([x, n_emb], 1)

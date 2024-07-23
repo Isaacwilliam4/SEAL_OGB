@@ -860,7 +860,7 @@ if args.dataset.startswith("ogbl"):
         data.x[:, 1] = torch.nn.functional.normalize(data.x[:, 1], dim=0)
         data.x[:, 2] = torch.nn.functional.normalize(data.x[:, 2], dim=0)
 elif args.dataset == "world_trade":
-    dataset = WorldTradeDataset(os.path.abspath("../compute/world_trade"), product_code='070200')
+    dataset = WorldTradeDataset(os.path.abspath("../nobackup/archive/world_trade"), product_code='070200')
     data = dataset[0]
     transform = RandomLinkSplit(is_undirected=False, split_labels=True, add_negative_train_samples=False)
     split = transform(data)
@@ -890,7 +890,7 @@ elif args.dataset == "world_trade":
             }
 elif args.dataset.__contains__("world_trade"):
     year = args.dataset[-4:]
-    dataset = WorldTradeDataset(os.path.abspath("../compute/world_trade"), year=year, product_code='070200')
+    dataset = WorldTradeDataset(os.path.abspath("../nobackup/archive/world_trade"), year=year, product_code='070200')
     data = dataset[0]
     transform = RandomLinkSplit(is_undirected=False, split_labels=True, add_negative_train_samples=False)
     split = transform(data)
@@ -923,7 +923,7 @@ elif args.dataset.__contains__("world_trade"):
     if args.next_year:
         print("Grabbing Next Year")
         future_year = str(int(year) + 1)
-        next_dataset = WorldTradeDataset(os.path.abspath("../compute/world_trade"), year=future_year, product_code='070200')
+        next_dataset = WorldTradeDataset(os.path.abspath("../nobackup/archive/world_trade"), year=future_year, product_code='070200')
         next_data = next_dataset[0]
         next_split = transform(next_data)
     
@@ -1092,10 +1092,6 @@ train_dataset = eval(dataset_class)(
     max_nodes_per_hop=args.max_nodes_per_hop,
     directed=directed,
 )
-print('Z', train_dataset[0].z.size())
-print('Z type', type(train_dataset[0].z))
-print('dl', train_dataset[0].dl.size())
-print('dl type', type(train_dataset[0].dl))
 if False:  # visualize some graphs
     import networkx as nx
     from torch_geometric.utils import to_networkx

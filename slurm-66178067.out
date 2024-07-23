@@ -1,0 +1,37 @@
+Results will be saved in results/world_trade_1995_20240722145651
+Command line input: python seal_link_pred.py --dataset world_trade_1995 --fast_split --num_hops 1 --use_feature --eval_steps 1 --runs 3 --epochs 10 --dynamic_train --dynamic_val --dynamic_test --train_percent 2 --val_percent 1 --test_percent 1 --use_dl
+ is saved.
+Data found, skipping download...
+Path /grphome/grp_supplychainai/nobackup/archive/world_trade_seal_h1_drnl_rph10
+Z torch.Size([23])
+Z type <class 'torch.Tensor'>
+dl torch.Size([23])
+dl type <class 'torch.Tensor'>
+Total number of parameters is 80578
+SortPooling k is set to 28
+  0%|                                           | 0/1 [00:00<?, ?it/s]  0%|                                           | 0/1 [00:01<?, ?it/s]
+dl torch.Size([804])
+dl type <class 'torch.Tensor'>
+dldtype torch.int64
+dl device cuda:0
+x device cuda:0
+Traceback (most recent call last):
+  File "seal_link_pred.py", line 1323, in <module>
+    loss = train()
+  File "seal_link_pred.py", line 511, in train
+    logits = model(data.z, data.edge_index, data.batch, dl, x, edge_weight, node_id)
+  File "/grphome/grp_supplychainai/.conda/envs/sealenv/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1532, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/grphome/grp_supplychainai/.conda/envs/sealenv/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1541, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/grphome/grp_supplychainai/SEAL_OGB/models.py", line 220, in forward
+    dl_emb = self.dl_embedding(dl)
+  File "/grphome/grp_supplychainai/.conda/envs/sealenv/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1532, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/grphome/grp_supplychainai/.conda/envs/sealenv/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1541, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/grphome/grp_supplychainai/.conda/envs/sealenv/lib/python3.8/site-packages/torch/nn/modules/sparse.py", line 163, in forward
+    return F.embedding(
+  File "/grphome/grp_supplychainai/.conda/envs/sealenv/lib/python3.8/site-packages/torch/nn/functional.py", line 2264, in embedding
+    return torch.embedding(weight, input, padding_idx, scale_grad_by_freq, sparse)
+RuntimeError: Expected all tensors to be on the same device, but found at least two devices, cpu and cuda:0! (when checking argument for argument index in method wrapper_CUDA__index_select)
