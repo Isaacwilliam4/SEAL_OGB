@@ -23,4 +23,4 @@ export CUDA_LAUNCH_BLOCKING=1
 
 # LOAD MODULES, INSERT CODE, AND RUN YOUR PROGRAMS HERE
 
-python seal_link_pred.py --dataset world_trade_1995 --fast_split --num_hops 1 --use_feature --eval_steps 1 --runs 3 --epochs 10 --dynamic_train --dynamic_val --dynamic_test --train_percent 2 --val_percent 1 --test_percent 1 --use_dl
+python seal_link_pred.py --dataset world_trade --fast_split --num_hops 1 --use_feature --eval_steps 1 --runs 3 --epochs 10 --dynamic_train --dynamic_val --dynamic_test --train_percent 2 --val_percent 1 --test_percent 1 --use_dl

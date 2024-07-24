@@ -1204,6 +1204,7 @@ for run in range(args.runs):
             args.dynamic_train,
             use_feature=args.use_feature,
             node_embedding=emb,
+            use_dl=args.use_dl,
         ).to(device)
     elif args.model == "SAGE":
         model = SAGE(
