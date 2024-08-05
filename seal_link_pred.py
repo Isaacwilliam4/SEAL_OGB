@@ -216,24 +216,32 @@ class WorldTradeDataset(Dataset):
             # add string code to get rid of 0 in front
             if self.product_code:
                 self.product_code = int(str(self.product_code).lstrip('0'))
-                trade_data_product = trade_data[trade_data['k']==self.product_code]
+                trade_data_product = trade_data[trade_data['k'] == self.product_code]
                 edge_index = trade_data_product[["i", "j"]].values.T
                 edge_index = map_func(edge_index)
                 edge_attr = trade_data[["t", "k", "v", "q"]]
-                edge_attr = edge_attr[edge_attr['k']==self.product_code]
+                edge_attr = edge_attr[edge_attr['k'] == self.product_code]
+
+                # fix last column
+                edge_attr['q'] = pd.to_numeric(edge_attr['q'].str.strip(), errors='coerce')
+                edge_attr['q'] = edge_attr['q'].fillna(edge_attr['q'].mean())
+                edge_attr['q'] = edge_attr['q'].astype(int)
+
             else:
                 edge_index = trade_data[["i", "j"]].values.T
                 edge_index = map_func(edge_index)
                 edge_attr = trade_data[["t", "k", "v", "q"]]
             
-            edge_attr = edge_attr.values
+            x = edge_attr.values.astype(int)
+            x = torch.tensor(x, dtype=torch.long)
             y = np.ones(edge_index.shape[1])
 
             data = Data(
                 edge_index=torch.from_numpy(edge_index),
                 num_nodes=len(self.ctry_data),
-                edge_attr=edge_attr,
+                x=x,
             )
+
 
             if self.year:
                 torch.save(

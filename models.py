@@ -5,7 +5,7 @@
 import math
 import numpy as np
 import torch
-from torch.nn import (ModuleList, Linear, Conv1d, MaxPool1d, Embedding, ReLU, 
+from torch.nn import (ModuleList, Linear, Conv1d, MaxPool1d, Embedding, Parameter, ReLU, 
                       Sequential, BatchNorm1d as BN)
 import torch.nn.functional as F
 from torch_geometric.nn import (GCNConv, SAGEConv, GINConv, 
@@ -132,6 +132,18 @@ class SAGE(torch.nn.Module):
 
         return x
 
+class CustomLinearLayer(torch.nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super(CustomLinearLayer, self).__init__()
+
+        self.input_dim = input_dim
+        self.linear = torch.nn.Linear(input_dim, output_dim)
+
+    def forward(self, dl):
+        padding_size = self.input_dim - len(dl)
+        padding = (0, padding_size)
+        dl_padded = F.pad(dl, padding, 'constant', 0)
+        return self.linear(dl_padded)
 
 # An end-to-end deep learning architecture for graph classification, AAAI-18.
 class DGCNN(torch.nn.Module):
@@ -182,9 +194,8 @@ class DGCNN(torch.nn.Module):
             initial_channels += train_dataset.num_features
         if self.node_embedding is not None:
             initial_channels += node_embedding.embedding_dim
-        # Maybe here to add in more channels for mat multiplication to work?
         if self.use_dl:
-            initial_channels += hidden_channels
+            initial_channels += 1
 
         self.convs.append(GNN(initial_channels, hidden_channels))
         for i in range(0, num_layers-1):
@@ -201,15 +212,23 @@ class DGCNN(torch.nn.Module):
                             conv1d_kws[1], 1)
         dense_dim = int((self.k - 2) / 2 + 1)
         dense_dim = (dense_dim - conv1d_kws[1] + 1) * conv1d_channels[1]
+        # self.dl_lin = CustomLinearLayer(1000, 1)
         self.lin1 = Linear(dense_dim, 128)
         self.lin2 = Linear(128, 1)
+
+        # if self.use_dl:
+        #     self.dl_parameter = Parameter(torch.zeros(dense_dim, hidden_channels))
+
+        # if self.use_dl:
+        #     dl = train_dataset[0].dl
+        #     print(dl)
+        #     print('dl type', type(dl))
+        #     print('dldtype', dl.dtype)
+        #     self.dl = torch.nn.Parameter(dl.to(torch.float))
 
 # dl_label=None in parameters
     def forward(self, z, edge_index, batch, dl=None, x=None, edge_weight=None, node_id=None):
         z_emb = self.z_embedding(z)
-        # print('dl', dl.size())
-        # print('dl type', type(dl))
-        # print('dldtype', dl.dtype)
         if z_emb.ndim == 3:  # in case z has multiple integer labels
             z_emb = z_emb.sum(dim=1)
         if self.use_feature and x is not None:
@@ -217,29 +236,18 @@ class DGCNN(torch.nn.Module):
         else:
             x = z_emb
         # make another one with condition AND dllabel
-        if dl is not None:
-            # print('dl device', dl.device)
-            # print('x device', x.device)
-            # print(f"Tensor Z shape: {z.shape}")
-            # print(f"Tensor Z_emb shape: {z_emb.shape}")
-            # print(f"Tensor dl shape: {dl.shape}")
-            # print('z content', z)
-            # print('dl content', dl)
-            # when I do all 0's or copy Z's it works
-            # no negative values???
-            dl = torch.abs(dl)
-            dl_emb = self.z_embedding(dl)
-            # print('dl_emb device', dl_emb.device)
-            # print('Z', z_emb.size())
-            # print('Z type', type(z_emb))
-            # print('zdtype', z_emb.dtype)
-            # print('dl_emb', dl_emb.size())
-            # print('dl_emb type', type(dl_emb))
-            # print('d_emb type', dl_emb.dtype)
-            # print('x', x.size())
-            # print('x type', type(x))
-            # print('xdtype', x.dtype)
-            x = torch.cat([dl_emb, x], 1)
+        if self.use_dl and dl is not None:
+            dl = dl.unsqueeze(1)
+            x = torch.cat([x, dl], 1)
+            # dl_emb = self.z_embedding(dl)
+            #dl_emb = dl.unsqueeze(1)
+            #dl_emb = dl_emb.repeat(1, 32)
+            # x = torch.cat([dl_emb, x], 1)
+
+        # if dl is not None:
+        #     dl_par = self.dl_parameter(dl)
+        #     x = torch.cat([dl_par, x], 1)
+
         if self.node_embedding is not None and node_id is not None:
             n_emb = self.node_embedding(node_id)
             x = torch.cat([x, n_emb], 1)
@@ -260,8 +268,17 @@ class DGCNN(torch.nn.Module):
         # MLP.
         x = F.relu(self.lin1(x))
         x = F.dropout(x, p=0.5, training=self.training)
+        # if dl is not None:
+        #     dl_emb = dl.to(torch.float32)
+        #     dl_emb = self.dl_lin(dl_emb)
+        #     dl_emb = dl_emb.unsqueeze(0)
+        #     # x = torch.cat([dl_emb, x])
+        #     x = self.lin2(x)
+        #     x = torch.cat([x, dl_emb], 0)
+        #     return x
         x = self.lin2(x)
         return x
+
 
 
 class GIN(torch.nn.Module):
