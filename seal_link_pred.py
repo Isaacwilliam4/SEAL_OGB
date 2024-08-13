@@ -221,16 +221,22 @@ class WorldTradeDataset(Dataset):
                 edge_index = map_func(edge_index)
                 edge_attr = trade_data[["t", "k", "v", "q"]]
                 edge_attr = edge_attr[edge_attr['k'] == self.product_code]
+                edge_attr = trade_data[["v", "q"]]
 
                 # fix last column
-                edge_attr['q'] = pd.to_numeric(edge_attr['q'].str.strip(), errors='coerce')
-                edge_attr['q'] = edge_attr['q'].fillna(edge_attr['q'].mean())
-                edge_attr['q'] = edge_attr['q'].astype(int)
+                edge_attr.loc[:, 'q'] = pd.to_numeric(edge_attr['q'].str.strip(), errors='coerce')
+                edge_attr.loc[:, 'q'] = edge_attr['q'].fillna(edge_attr['q'].mean())
+                edge_attr.loc[:, 'q'] = edge_attr['q'].astype(int)
 
             else:
                 edge_index = trade_data[["i", "j"]].values.T
                 edge_index = map_func(edge_index)
-                edge_attr = trade_data[["t", "k", "v", "q"]]
+                edge_attr = trade_data[["v", "q"]]
+
+                # fix last column
+                edge_attr.loc[:, 'q'] = pd.to_numeric(edge_attr['q'].str.strip(), errors='coerce')
+                edge_attr.loc[:, 'q'] = edge_attr['q'].fillna(edge_attr['q'].mean())
+                edge_attr.loc[:, 'q'] = edge_attr['q'].astype(int)
             
             x = edge_attr.values.astype(int)
             x = torch.tensor(x, dtype=torch.long)
