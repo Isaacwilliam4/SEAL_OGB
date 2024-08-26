@@ -337,6 +337,7 @@ class SEALDataset(InMemoryDataset):
         split="train",
         use_coalesce=False,
         node_label="drnl",
+        direct_label=False,
         ratio_per_hop=1.0,
         max_nodes_per_hop=None,
         directed=False,
@@ -348,6 +349,7 @@ class SEALDataset(InMemoryDataset):
         self.split = split
         self.use_coalesce = use_coalesce
         self.node_label = node_label
+        self.direct_label = direct_label
         self.ratio_per_hop = ratio_per_hop
         self.max_nodes_per_hop = max_nodes_per_hop
         self.directed = directed
@@ -865,9 +867,11 @@ with open(log_file, "a") as f:
     f.write("\n" + cmd_input)
 
 if args.dataset.startswith("ogbl"):
+    print('BEFORE')
     dataset = PygLinkPropPredDataset(name=args.dataset)
     split_edge = dataset.get_edge_split()
     data = dataset[0]
+    print('AFTER')
     if args.dataset.startswith("ogbl-vessel"):
         # normalize node features
         data.x[:, 0] = torch.nn.functional.normalize(data.x[:, 0], dim=0)
@@ -1300,7 +1304,12 @@ for run in range(args.runs):
         exit()
 
     if args.test_multiple_models:
-        model_paths = []  # enter all your pretrained .pth model paths here
+        model_paths = ['results/ogbl-citation2_20240820112422/run1_model_checkpoint1.pth',
+                       'results/ogbl-citation2_20240822155522/run1_model_checkpoint5.pth',
+                       'results/ogbl-citation2_20240822155536/run1_model_checkpoint1.pth',
+                       'results/ogbl-citation2_20240822155542/run1_model_checkpoint6.pth',
+                       'results/ogbl-citation2_20240822155600/run1_model_checkpoint7.pth', 
+                       'results/ogbl-citation2_20240822155559/run1_model_checkpoint1.pth']  # enter all your pretrained .pth model paths here
         models = []
         for path in model_paths:
             m = cp.deepcopy(model)
@@ -1331,6 +1340,7 @@ for run in range(args.runs):
 
     # Training starts
     for epoch in range(start_epoch, start_epoch + args.epochs):
+        print('before')
         loss = train()
 
         if epoch % args.eval_steps == 0:
@@ -1361,6 +1371,7 @@ for run in range(args.runs):
                     with open(log_file, "a") as f:
                         print(key, file=f)
                         print(to_print, file=f)
+            print('After')
 
     for key in loggers.keys():
         print(key)

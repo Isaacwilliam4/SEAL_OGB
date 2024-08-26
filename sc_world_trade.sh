@@ -5,7 +5,7 @@
 #SBATCH --ntasks=4   # number of processor cores (i.e. tasks)
 #SBATCH --nodes=1   # number of nodes
 #SBATCH --gpus=1
-#SBATCH -C 'pascal|kepler'   # features syntax (use quotes): -C 'a&b&c&d'
+#SBATCH -C 'pascal'   # features syntax (use quotes): -C 'a&b&c&d'
 #SBATCH --mem-per-cpu=32G  # memory per CPU core
 #SBATCH -J "seal_test"   # job name
 
@@ -22,4 +22,4 @@ export OMP_NUM_THREADS=$SLURM_CPUS_ON_NODE
 # LOAD MODULES, INSERT CODE, AND RUN YOUR PROGRAMS HERE
 # when testing paper results, took out --fast_split --runs, added --use_edge_weight
 
-python seal_link_pred.py --dataset ogbl-citation2 --num_hops 1 --use_feature --use_edge_weight --eval_steps 1 --epochs 10 --dynamic_train --dynamic_val --dynamic_test --train_percent 2 --val_percent 1 --test_percent 1 --use_dl
+python seal_link_pred.py --dataset ogbl-citation2 --num_hops 1 --use_feature --use_edge_weight --test_multiple_models --val_percent 100 --test_percent 100 --use_dl

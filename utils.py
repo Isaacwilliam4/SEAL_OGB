@@ -7,6 +7,7 @@ import math
 from tqdm import tqdm
 import random
 import numpy as np
+import heapq
 import scipy.sparse as ssp
 from scipy.sparse.csgraph import shortest_path
 import torch
@@ -156,7 +157,7 @@ def de_plus_node_labeling(adj, src, dst, max_dist=100):
 
     return dist.to(torch.long)
 
-# direct label function
+#direct label function
 def directed_path_contribution(adj, node):
     num_nodes = adj.shape[0]
     contribution = np.zeros(num_nodes)
@@ -191,6 +192,48 @@ def directed_path_contribution(adj, node):
         contribution[i] = path_contribution
     # max_abs_contribution = contribution[np.argmax(np.abs(contribution))]
     return contribution
+
+# attempt to get abs value
+# def directed_path_contribution(adj, node):
+#     num_nodes = adj.shape[0]
+#     contribution = np.zeros(num_nodes)
+    
+#     def bfs_max_directionality(adj, start_node):
+#         num_nodes = adj.shape[0]
+#         visited = np.full(num_nodes, np.inf)  # Store the shortest distance to each node
+#         max_directionality = np.full(num_nodes, -np.inf)  # Store the max abs directionality sum
+
+#         queue = [(0, 0, start_node, 0)]  # (distance, directionality_sum, current_node, path_abs_sum)
+#         visited[start_node] = 0
+#         max_directionality[start_node] = 0
+
+#         while queue:
+#             dist, directionality_sum, current_node, path_abs_sum = heapq.heappop(queue)
+
+#             for neighbor in range(num_nodes):
+#                 if adj[current_node, neighbor] != 0 or adj[neighbor, current_node] != 0:
+#                     new_dist = dist + 1
+#                     new_directionality_sum = directionality_sum
+                    
+#                     # Update directionality sum
+#                     if adj[current_node, neighbor] > 0 and adj[neighbor, current_node] == 0:
+#                         new_directionality_sum -= 1
+#                     elif adj[neighbor, current_node] > 0 and adj[current_node, neighbor] == 0:
+#                         new_directionality_sum += 1
+
+#                     new_path_abs_sum = abs(new_directionality_sum)
+
+#                     # Check if we should update the path to this neighbor
+#                     if new_dist < visited[neighbor] or (new_dist == visited[neighbor] and new_path_abs_sum > abs(max_directionality[neighbor])):
+#                         visited[neighbor] = new_dist
+#                         max_directionality[neighbor] = new_directionality_sum
+#                         heapq.heappush(queue, (new_dist, new_directionality_sum, neighbor, new_path_abs_sum))
+
+#         return max_directionality
+
+#     max_directionality = bfs_max_directionality(adj, node)
+    
+#     return max_directionality
 
 def direct_labeling(adj, src, dst):
     # src, dst = (dst, src) if src > dst else (src, dst)
