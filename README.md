@@ -1,6 +1,17 @@
 SEAL\_OGB -- An Implementation of SEAL for OGB Link Prediction Tasks
 ===============================================================================
 
+Setup
+-----
+
+```
+conda create -n sealenv python=3.8.10
+conda activate sealenv
+conda install pytorch -c pytorch -y
+conda install pyg pytorch-sparse -c pyg -y
+conda install six numpy tqdm scipy -y
+```
+
 About
 -----
 This repository supports the following paper:
